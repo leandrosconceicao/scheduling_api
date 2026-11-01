@@ -1,0 +1,22 @@
+# Arquivos que NÃO são enviados no `gcloud app deploy`.
+# Segredos e credenciais
+.env
+.env.*
+firebase_config.json
+*-firebase-adminsdk-*.json
+*.pem
+*.key
+.vscode/
+
+# Controle de versão e arquivos locais
+.git/
+.gitignore
+.gcloudignore
+.dockerignore
+docker-compose.yml
+
+# Gerados no build do App Engine (gcp-build)
+node_modules/
+dist/
+*.log
+coverage/

@@ -1,0 +1,14 @@
+node_modules
+.vscode
+build
+dist
+firebase_config.json
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*-firebase-adminsdk-*.json
+*.log
+coverage
+app.yaml
