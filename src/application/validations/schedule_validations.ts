@@ -46,3 +46,11 @@ export const SCHEDULE_TYPE_UPDATE_REQUEST_VALIDATION = z.object({
     }).optional(),
     price: NUMBER_VALIDATION.optional()
 })
+
+export const SCHEDULE_CANCEL_VALIDATION = z.object({
+    reason: STRING_VALIDATION.trim().nonempty({
+        error: "Informe o motivo do cancelamento"
+    }).max(500, {
+        error: "Tamanho máximo de 500 caracteres excedido"
+    })
+})

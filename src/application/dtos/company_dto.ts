@@ -18,7 +18,7 @@ export class CompanyDto extends BaseDto {
     ownerId: any;
 
     constructor(entity: ICompany) {
-        super()
+        super(entity._id, entity.createdAt, entity.updatedAt, entity.deleted);
         this.cnpj = String(entity.cnpj);
         this.name = String(entity.name);
         this.configuration = entity.configuration;

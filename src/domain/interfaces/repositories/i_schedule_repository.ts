@@ -1,4 +1,4 @@
-import { ISchedule, IScheduleType } from "@domain";
+import { ISchedule, IScheduleCancellation, IScheduleType } from "@domain";
 
 
 
@@ -8,7 +8,7 @@ export interface IScheduleRepository {
     getSchedule(companyId: string, startsAt: Date, endsAt: Date) : Promise<ISchedule | null>;
     mapSchedules(companyId: string) : Promise<ISchedule[]>;
     getScheduleById(companyId: string, id: string) : Promise<ISchedule | null>;
-    cancelSchedule(companyId: string, id: string) : Promise<void>;
+    cancelSchedule(companyId: string, id: string, cancellation: IScheduleCancellation) : Promise<void>;
     updateSchedule(id: string, schedule: Partial<ISchedule>) : Promise<ISchedule | null>;
     getScheduleTypes(companyId: string) : Promise<IScheduleType[]>;
     getScheduleTypeById(companyId: string, id: string) : Promise<IScheduleType | null>;

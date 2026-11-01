@@ -36,7 +36,7 @@ export class CloudService implements ICloudService {
             }
 
         } catch (e) {
-
+            console.warn(e);
         }
     }
 

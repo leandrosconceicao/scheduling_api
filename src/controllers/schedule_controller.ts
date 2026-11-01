@@ -21,6 +21,16 @@ export class ScheduleController {
         }
     }
 
+    getCompanySchedules = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const result = await this.service.getCompanySchedules(req);
+
+            return res.status(result.statusCode).json(result);
+        } catch (e) {
+            next(e);
+        }
+    }
+
     createSchedule = async (req: Request, _: Response, next: NextFunction) => {
         try {
             const result = await this.service.confirmSchedule(req);
@@ -47,6 +57,21 @@ export class ScheduleController {
     cancelSchedule = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const result = await this.service.cancelSchedule(req);
+
+            this.cloudService.sendScheduledEvent(req.params.companyId.toString(), [result.dados]);
+
+            return res.status(result.statusCode).json(result);
+
+        } catch (e) {
+            next(e);
+        }
+    }
+
+    cancelScheduleByCompany = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const result = await this.service.cancelScheduleByCompany(req);
+
+            this.cloudService.sendScheduledEvent(req.params.companyId.toString(), [result.dados]);
 
             return res.status(result.statusCode).json(result);
 
@@ -121,9 +146,9 @@ export class ScheduleController {
 
     sendEventSchedule = async (req: Request, res: Response, next: NextFunction) => {
         try {
-            const result = req.result as (ISchedule | null)[];
+            const result = req.result as ISchedule | null;
 
-            this.cloudService.sendScheduledEvent(req.params.companyId.toString(), result)
+            this.cloudService.sendScheduledEvent(req.params.companyId.toString(), [result])
             
             res.status(200).json(ScheduleResponseDto.success(result));
         } catch (e) {

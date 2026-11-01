@@ -1,6 +1,6 @@
 import { injectable, registry, delay } from "tsyringe";
 import mongoose from "mongoose";
-import { IScheduleRepository, ISchedule, ScheduleModel, IScheduleType, ScheduleTypeModel } from "@domain";
+import { IScheduleRepository, ISchedule, ScheduleModel, IScheduleType, ScheduleTypeModel, IScheduleCancellation } from "@domain";
 
 var ObjectId = mongoose.Types.ObjectId;
 
@@ -88,14 +88,15 @@ export class ScheduleRepository implements IScheduleRepository {
             .populate("companyDetail")
             .populate("typeDetail")
     }
-    async cancelSchedule(companyId: string, id: string): Promise<void> {
+    async cancelSchedule(companyId: string, id: string, cancellation: IScheduleCancellation): Promise<void> {
         await ScheduleModel.findOneAndUpdate({
             companyId: new ObjectId(companyId),
             _id: new ObjectId(id)
         },
             {
                 $set: {
-                    deleted: true
+                    deleted: true,
+                    cancellation: cancellation
                 }
             }
         )

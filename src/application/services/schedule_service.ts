@@ -3,8 +3,8 @@ import { Request } from "express";
 import { delay, inject, injectable, registry } from "tsyringe";
 import { Types } from "mongoose";
 
-import { IScheduleService, IScheduleRepository, ICompanyRepository, ICacheService, ISchedule, IScheduleType, ICompany, NotFoundError, ScheduleState, Horario, IClient } from "@domain";
-import { assertCompanyOwner, OBJECT_ID_VALIDATION, SCHEDULE_CONFIRM_VALIDATION, SCHEDULE_FILTER_VALIDATION, SCHEDULE_VALIDATION, SCHEDULE_LOCK_REQUEST_VALIDATION, SCHEDULE_TYPE_REQUEST_VALIDATION, SCHEDULE_TYPE_UPDATE_REQUEST_VALIDATION, ScheduleResponseDto, ScheduleTypeResponseDto } from "@application";
+import { IScheduleService, IScheduleRepository, ICompanyRepository, ICacheService, ISchedule, IScheduleType, ICompany, NotFoundError, ScheduleState, Horario, IClient, Forbidden, CancellationOrigin, IScheduleCancellation } from "@domain";
+import { assertCompanyOwner, OBJECT_ID_VALIDATION, SCHEDULE_CONFIRM_VALIDATION, SCHEDULE_FILTER_VALIDATION, SCHEDULE_VALIDATION, SCHEDULE_LOCK_REQUEST_VALIDATION, SCHEDULE_TYPE_REQUEST_VALIDATION, SCHEDULE_TYPE_UPDATE_REQUEST_VALIDATION, ScheduleResponseDto, ScheduleTypeResponseDto, SCHEDULE_CANCEL_VALIDATION } from "@application";
 
 
 @injectable()
@@ -24,6 +24,10 @@ export class ScheduleService implements IScheduleService {
 
     private scheduleCacheKey(companyId: string, startsAt: Date, endsAt: Date) {
         return `${companyId}:${startsAt.toISOString()}_${endsAt.toISOString()}`;
+    }
+
+    private scheduleByIdCacheKey(companyId: string, id: string) {
+        return `${companyId}:${id}`;
     }
 
     private formatDateToPtBr(date: Date): string {
@@ -187,12 +191,46 @@ export class ScheduleService implements IScheduleService {
     getSchedules = async (request: Request): Promise<ScheduleResponseDto> => {
         const companyId = OBJECT_ID_VALIDATION.parse(request.params.companyId);
 
+        const company = await this.getCompany(companyId);
+
+        const schedules = await this.mapCompanySchedules(request, company);
+
+        const clientUid = (request.autenticatedUser as IClient)?.uid;
+
+        // Clientes só veem os próprios dados; dos demais horários recebem apenas a ocupação
+        const visibleSchedules = schedules.map((item) => {
+            const belongsToClient = !!clientUid && (item.client?.uid === clientUid || item.lockPeriodDetail?.uid === clientUid);
+
+            if (belongsToClient) return item;
+
+            return <ISchedule>{
+                ...item,
+                client: undefined,
+                lockPeriodDetail: item.lockPeriodDetail
+                    ? { expiresAt: item.lockPeriodDetail.expiresAt } as ISchedule["lockPeriodDetail"]
+                    : undefined,
+            };
+        });
+
+        return new ScheduleResponseDto(visibleSchedules);
+    }
+    getCompanySchedules = async (request: Request): Promise<ScheduleResponseDto> => {
+        const companyId = OBJECT_ID_VALIDATION.parse(request.params.companyId);
+
+        const company = await this.getCompany(companyId);
+
+        assertCompanyOwner(request, company);
+
+        const schedules = await this.mapCompanySchedules(request, company, true);
+
+        return new ScheduleResponseDto(schedules);
+    }
+
+    // includePast: o estabelecimento pode consultar o histórico; clientes veem apenas horários futuros
+    private async mapCompanySchedules(request: Request, company: ICompany, includePast = false): Promise<ISchedule[]> {
+        const companyId = String(company._id);
+
         const filters = SCHEDULE_FILTER_VALIDATION.parse(request.query);
-
-        const company = await this.companyRepo.getCompanyById(companyId);
-
-        if (!company)
-            throw new NotFoundError("Empresa não cadastrada");
 
         const now = new Date();
 
@@ -204,7 +242,7 @@ export class ScheduleService implements IScheduleService {
         startFilter.setHours(0, 0, 0, 0);
         endFilter.setHours(23, 59, 59, 999);
 
-        if (startFilter < now) {
+        if (!includePast && startFilter < now) {
             throw ScheduleResponseDto.badRequest("Data inválida")
         }
 
@@ -234,7 +272,7 @@ export class ScheduleService implements IScheduleService {
 
             let stDate = new Date(startDate);
             stDate.setMinutes(stDate.getMinutes() + company.configuration.defaultPeriodInMinutes)
-            if (!passedHour) {
+            if (includePast || !passedHour) {
                 mappedSchedules.push({
                     startsAt: startDate,
                     endsAt: new Date(stDate),
@@ -263,13 +301,11 @@ export class ScheduleService implements IScheduleService {
 
         }
 
-        mappedSchedules = mappedSchedules.filter((e) => e.state !== ScheduleState.closed);
-
-        return new ScheduleResponseDto(mappedSchedules);
+        return mappedSchedules.filter((e) => e.state !== ScheduleState.closed);
     }
     getScheduleById = async (request: Request): Promise<ScheduleResponseDto> => {
 
-        const schedule = await this.getSchedule(request);
+        const schedule = await this.getClientSchedule(request);
 
         return new ScheduleResponseDto(schedule);
     }
@@ -277,11 +313,58 @@ export class ScheduleService implements IScheduleService {
 
         const { companyId, id } = this.getIds(request);
 
-        await this.getSchedule(request);
+        const schedule = await this.getClientSchedule(request);
 
-        await this.repository.cancelSchedule(companyId, id);
+        await this.cancel(companyId, id, schedule, {
+            canceledBy: CancellationOrigin.client,
+            canceledAt: new Date(),
+        });
 
-        return new ScheduleResponseDto();
+        return new ScheduleResponseDto(schedule);
+    }
+    cancelScheduleByCompany = async (request: Request): Promise<ScheduleResponseDto> => {
+
+        const { companyId, id } = this.getIds(request);
+
+        const { reason } = SCHEDULE_CANCEL_VALIDATION.parse(request.body);
+
+        assertCompanyOwner(request, await this.getCompany(companyId));
+
+        const schedule = await this.getSchedule(request);
+
+        await this.cancel(companyId, id, schedule, {
+            canceledBy: CancellationOrigin.company,
+            canceledAt: new Date(),
+            reason,
+        });
+
+        return new ScheduleResponseDto(schedule);
+    }
+
+    private async cancel(companyId: string, id: string, schedule: ISchedule, cancellation: IScheduleCancellation) {
+        // startsAt pode vir do cache como string
+        if (new Date(schedule.startsAt) < new Date()) {
+            throw ScheduleResponseDto.badRequest("Não é possível cancelar um agendamento que já passou");
+        }
+
+        await this.repository.cancelSchedule(companyId, id, cancellation);
+
+        await this.cacheService.removeData(this.scheduleByIdCacheKey(companyId, id));
+
+        schedule.cancellation = cancellation;
+    }
+
+    // Agendamentos contêm dados pessoais do cliente: somente quem agendou pode consultá-los ou cancelá-los
+    private async getClientSchedule(request: Request) {
+        const authenticatedUser = request.autenticatedUser as IClient;
+
+        const schedule = await this.getSchedule(request);
+
+        if (schedule.client?.uid !== authenticatedUser.uid) {
+            throw new Forbidden("Operação não permitida");
+        }
+
+        return schedule;
     }
     getScheduleTypes = async (request: Request): Promise<ScheduleTypeResponseDto> => {
         const companyId = OBJECT_ID_VALIDATION.parse(request.params.companyId);
@@ -343,7 +426,7 @@ export class ScheduleService implements IScheduleService {
     private async getSchedule(request: Request) {
         const { companyId, id } = this.getIds(request);
 
-        const cacheValue = await this.cacheService.getData(`${companyId}:${id}`);
+        const cacheValue = await this.cacheService.getData(this.scheduleByIdCacheKey(companyId, id));
 
         if (cacheValue) {
             return JSON.parse(cacheValue) as ISchedule;
@@ -353,7 +436,7 @@ export class ScheduleService implements IScheduleService {
 
         if (!schedule) throw new NotFoundError("Agendamento não localizado");
 
-        await this.cacheService.setCache(`${companyId}:${id}`, JSON.stringify(schedule), 200);
+        await this.cacheService.setCache(this.scheduleByIdCacheKey(companyId, id), JSON.stringify(schedule), 200);
 
         return schedule;
     }

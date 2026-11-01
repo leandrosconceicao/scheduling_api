@@ -1,4 +1,4 @@
-import { ScheduleState, ISchedule } from "@domain";
+import { ScheduleState, ISchedule, CancellationOrigin } from "@domain";
 import mongoose from "mongoose";
 
 var ObjectId = mongoose.Types.ObjectId;
@@ -37,6 +37,20 @@ const scheduleSchema = new mongoose.Schema<ISchedule>({
         type: {
             uid: String,
             expiresAt: Date
+        },
+        default: undefined
+    },
+    cancellation: {
+        type: {
+            canceledBy: {
+                type: String,
+                enum: {
+                    values: Object.values(CancellationOrigin),
+                    message: "Origem {VALUE} não é um valor permitido"
+                }
+            },
+            canceledAt: Date,
+            reason: String
         },
         default: undefined
     },

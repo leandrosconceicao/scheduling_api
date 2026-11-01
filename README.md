@@ -283,12 +283,16 @@ Exemplo de cadastro:
 
 | Método | Rota | Auth | Descrição |
 |---|---|---|---|
-| GET | `/schedules/:companyId?startsAt=YYYY-MM-DD&endsAt=YYYY-MM-DD` | 🔥 | Lista os horários do dia com seu estado (padrão: hoje) |
+| GET | `/schedules/:companyId?startsAt=YYYY-MM-DD&endsAt=YYYY-MM-DD` | 🔥 | Lista os horários do dia com seu estado (padrão: hoje). Dados de outros clientes não são retornados |
+| GET | `/company/:companyId/schedules?startsAt=YYYY-MM-DD&endsAt=YYYY-MM-DD` | 🔑 🏢 | Agenda do estabelecimento, com os dados dos clientes de cada horário. Aceita datas passadas (histórico) |
 | POST | `/lock_schedule/:companyId` | 🔥 | Reserva temporariamente um horário. Body: `{ startsAt, endsAt, typeId }` |
 | DELETE | `/lock_schedule/:companyId` | 🔥 | Libera a reserva. Body: `{ startsAt, endsAt }` |
 | POST | `/schedules/:companyId` | 🔥 | Confirma o agendamento. Body: `{ startsAt, endsAt, typeId, employeeId, phoneNumber }` |
-| GET | `/schedules/:companyId/:id` | 🔥 | Detalhes de um agendamento |
-| DELETE | `/schedules/:companyId/:id` | 🔥 | Cancela um agendamento |
+| GET | `/schedules/:companyId/:id` | 🔥 | Detalhes de um agendamento (somente o cliente que agendou) |
+| DELETE | `/schedules/:companyId/:id` | 🔥 | Cancela um agendamento (somente o cliente que agendou) |
+| DELETE | `/company/:companyId/schedules/:id` | 🔑 🏢 | Cancelamento pelo estabelecimento. Body: `{ reason }` (obrigatório, até 500 caracteres) |
+
+Agendamentos que já passaram não podem ser cancelados. Todo cancelamento fica registrado no agendamento, no campo `cancellation`, com a origem (`client` ou `company`), a data e, quando feito pelo estabelecimento, o motivo.
 
 Datas de `startsAt`/`endsAt` no body seguem ISO 8601 com fuso (ex.: `2026-11-03T14:00:00-03:00`).
 
@@ -303,7 +307,7 @@ GET /schedules/:companyId   →   POST /lock_schedule/:companyId   →   POST /s
 2. **Reserva:** o cliente reserva um horário, que fica bloqueado no Redis pelo tempo de `lockSchedulePeriodInMinutes`. Ao expirar, o horário volta a ficar livre automaticamente.
 3. **Confirmação:** só o cliente que reservou pode confirmar o horário. O agendamento é gravado no MongoDB e a reserva é removida.
 
-A cada reserva, liberação ou confirmação, a API atualiza o nó `<companyId>/<YYYY-MM-DD>` no Firebase Realtime Database (campo `deliveryIdEvent`), permitindo que os apps clientes atualizem a agenda em tempo real.
+A cada reserva, liberação, confirmação ou cancelamento, a API atualiza o nó `<companyId>/<YYYY-MM-DD>` no Firebase Realtime Database (campo `deliveryIdEvent`), permitindo que os apps clientes atualizem a agenda em tempo real.
 
 | Estado | Significado |
 |---|---|

@@ -68,7 +68,7 @@ export class CompanyController {
             const result = await this.service.getCompanyByDomain(req);
 
             return res.status(result.statusCode).json(ApiResponse.success({
-                _id: result.dados?.id
+                _id: result.dados?._id
             }));
             
         } catch (e) {

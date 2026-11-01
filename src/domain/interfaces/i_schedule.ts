@@ -1,4 +1,10 @@
-import { IBase, IClient, ICompany, IEmployee, IScheduleType } from "@domain";
+import { CancellationOrigin, IBase, IClient, ICompany, IEmployee, IScheduleType } from "@domain";
+
+export interface IScheduleCancellation {
+    canceledBy: CancellationOrigin,
+    canceledAt: Date,
+    reason?: string,
+}
 
 export interface ISchedule extends IBase {
     companyId: any,
@@ -16,4 +22,5 @@ export interface ISchedule extends IBase {
         uid: string,
         expiresAt: Date
     },
+    cancellation?: IScheduleCancellation,
 }
