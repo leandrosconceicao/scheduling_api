@@ -60,4 +60,14 @@ export class EmployerController {
             next(e);
         }
     }
+    getCompanyEmployers = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const result = await this.service.getCompanyEmployers(req);
+
+            return res.status(result.statusCode).json(result);
+
+        } catch (e) {
+            next(e);
+        }
+    }
 }

@@ -373,7 +373,16 @@ export class ScheduleService implements IScheduleService {
 
         return new ScheduleTypeResponseDto(types);
     }
-    addNewScheduleType = async (request: Request): Promise<ScheduleTypeResponseDto> => {
+    getCompanyScheduleTypes = async (request: Request): Promise<ScheduleTypeResponseDto> => {
+        const companyId = OBJECT_ID_VALIDATION.parse(request.params.companyId);
+
+        assertCompanyOwner(request, await this.getCompany(companyId));
+
+        const types = await this.repository.getScheduleTypes(companyId);
+
+        return new ScheduleTypeResponseDto(types);
+    }
+    addNewScheduleType =async (request: Request): Promise<ScheduleTypeResponseDto> => {
         const companyId = OBJECT_ID_VALIDATION.parse(request.params.companyId);
 
         assertCompanyOwner(request, await this.getCompany(companyId));

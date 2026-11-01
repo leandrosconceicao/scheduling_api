@@ -11,6 +11,7 @@ export interface IScheduleService {
     cancelScheduleByCompany(request: Request): Promise<ScheduleResponseDto>;
     lockSchedule(req: Request): Promise<ScheduleResponseDto>;
     getScheduleTypes(request: Request): Promise<ScheduleTypeResponseDto>;
+    getCompanyScheduleTypes(request: Request): Promise<ScheduleTypeResponseDto>;
     addNewScheduleType(request: Request): Promise<ScheduleTypeResponseDto>;
     removeScheduleType(request: Request): Promise<ScheduleTypeResponseDto>;
     updateScheduleTypeById(request: Request): Promise<ScheduleTypeResponseDto>;

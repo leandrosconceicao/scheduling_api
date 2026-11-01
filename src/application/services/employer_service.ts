@@ -23,8 +23,17 @@ export class EmployerService implements IEmployerService {
 
         return new EmployeeResponseDto(result);
     }
+    getCompanyEmployers = async (request: Request): Promise<EmployeeResponseDto> => {
+        const companyId = OBJECT_ID_VALIDATION.parse(request.params.companyId);
 
-    createEmployer = async (request: Request): Promise<EmployeeResponseDto> => {
+        await this.assertCompanyOwnership(request, companyId);
+
+        const result = await this.repository.getEmployers(companyId);
+
+        return new EmployeeResponseDto(result);
+    }
+
+    createEmployer =async (request: Request): Promise<EmployeeResponseDto> => {
 
         const companyId = OBJECT_ID_VALIDATION.parse(request.params.companyId);
 

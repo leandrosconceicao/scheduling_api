@@ -101,6 +101,16 @@ export class ScheduleController {
         }
     }
 
+    getCompanyScheduleTypes = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const result = await this.service.getCompanyScheduleTypes(req);
+
+            return res.status(result.statusCode).json(result);
+        } catch (e) {
+            next(e);
+        }
+    }
+
     deleteScheduleType = async (req: Request, res: Response, next: NextFunction) => {
         try {
             await this.service.removeScheduleType(req);

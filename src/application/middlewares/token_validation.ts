@@ -50,9 +50,10 @@ export function signJwt(user: IOwner) {
 
 export async function validateOwnerToken(req: Request, _: Response, next: NextFunction) {
     try {
-        const bearer = req.headers.authorization?.split("Bearer ") ?? ["", ""];
+        // Aceita o token com ou sem o prefixo "Bearer"
+        const access_token = req.headers.authorization?.replace(/^Bearer\s+/i, "");
 
-        const token = z.jwt().parse(bearer[1]);
+        const token = z.jwt().parse(access_token);
 
         req.autenticatedOwner = Jwt.verify(token, jwtKey) as Request["autenticatedOwner"];
 

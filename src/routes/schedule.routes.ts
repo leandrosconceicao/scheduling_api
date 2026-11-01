@@ -20,7 +20,7 @@ scheduleRouter.route("/schedules/:companyId")
     .post(validateToken, scheduleCtrl.createSchedule, scheduleCtrl.sendEventSchedule);
 
 scheduleRouter.route("/schedules/types/:companyId")
-    .get(scheduleCtrl.getScheduleTypes)
+    .get(validateToken, scheduleCtrl.getScheduleTypes)
     .post(validateOwnerToken, scheduleCtrl.addNewScheduleType)
 
 scheduleRouter.route("/schedules/types/:companyId/:id")
@@ -30,12 +30,6 @@ scheduleRouter.route("/schedules/types/:companyId/:id")
 scheduleRouter.route("/schedules/:companyId/:id")
     .get(validateToken, scheduleCtrl.getScheduleById)
     .delete(validateToken, scheduleCtrl.cancelSchedule);
-
-scheduleRouter.route("/company/:companyId/schedules")
-    .get(validateOwnerToken, scheduleCtrl.getCompanySchedules);
-
-scheduleRouter.route("/company/:companyId/schedules/:id")
-    .delete(validateOwnerToken, scheduleCtrl.cancelScheduleByCompany);
 
 
 export {scheduleRouter};
