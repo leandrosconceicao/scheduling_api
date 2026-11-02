@@ -6,7 +6,9 @@
     "dev": "tsx watch src/app.ts",
     "build": "tsc -p . && tsc-alias -p tsconfig.json --resolve-full-paths",
     "gcp-build": "npm run build",
-    "start": "node dist/app.js"
+    "start": "node dist/app.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [],
   "author": "",
@@ -17,9 +19,13 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.2.0",
     "@types/redis": "^4.0.10",
+    "@types/supertest": "^7.2.1",
+    "mongodb-memory-server": "^11.3.0",
+    "supertest": "^7.3.1",
     "tsc-alias": "^1.9.10",
     "tsx": "^4.23.15",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
   },
   "dependencies": {
     "cors": "^2.8.6",

@@ -338,3 +338,24 @@ Todas as respostas seguem o envelope:
 | `406` | Parâmetros inválidos (falha de validação), com o detalhe de cada campo em `message` |
 | `409` | Registro duplicado (ex.: `username` já existente) |
 | `500` | Erro interno |
+
+## Testes de integração
+
+Os testes sobem a aplicação Express completa (rotas, middlewares, serviços e repositórios) e a exercitam via HTTP com `supertest`. Dependências externas são isoladas:
+
+| Dependência | Nos testes |
+|---|---|
+| MongoDB | `mongodb-memory-server` (um mongod para a suíte; um banco por arquivo de teste) |
+| Redis | cache em memória (`tests/support/fakes.ts`) |
+| Firebase Auth / Realtime DB / Storage | fakes; os tokens de cliente são gerados por `clientToken()` e os eventos em tempo real ficam em `dbEvents` |
+
+```bash
+npm test            # executa a suíte uma vez
+npm run test:watch  # modo watch
+```
+
+Na primeira execução o `mongodb-memory-server` baixa o binário do MongoDB (fica em cache em `node_modules/.cache`). Não é necessário `.env` nem Docker.
+
+Cobertura: owners e autenticação, empresas, funcionários, tipos de serviço, reserva/confirmação/consulta/cancelamento de agendamentos (cliente e estabelecimento), permissões entre empresas e uma jornada ponta a ponta.
+
+Testes marcados com `it.fails` documentam **defeitos conhecidos**: eles descrevem o comportamento correto e passam enquanto o defeito existe. Quando o defeito for corrigido o teste passa a falhar com "Expect test to fail" — basta remover o `.fails`.

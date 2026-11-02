@@ -1,15 +1,12 @@
 import 'reflect-metadata';
 import { env } from "@config/env";
-import express from "express";
 import "./dependency_injection";
 import database from "@config/database"
 import { applicationDefault, cert, initializeApp } from 'firebase-admin/app';
 import cache from "@config/cache";
-import cors from "cors"
-import { errorCatcher, pageNotFound } from '@application';
-import { router } from '@routes';
+import { createApp } from "./create_app";
 
-const app = express();
+const app = createApp();
 
 database.on("error", console.log.bind(console, "Erro de conexão"));
 database.once("open", () => {
@@ -23,20 +20,6 @@ initializeApp({
     storageBucket: env.FIREBASESTORAGE,
     databaseURL: env.FIREBASEDB
 });
-
-app.use(cors());
-
-app.use(
-    express.json({
-        limit: "10mb"
-    })
-)
-
-
-router(app);
-
-app.use(pageNotFound);
-app.use(errorCatcher)
 
 const port = env.PORT;
 

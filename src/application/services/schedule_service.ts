@@ -85,7 +85,8 @@ export class ScheduleService implements IScheduleService {
 
         if (schedule) {
             
-            const key = this.scheduleCacheKey(companyId, schedule.startsAt, schedule.endsAt);
+            // schedule pode vir do cache (JSON), onde as datas são strings
+            const key = this.scheduleCacheKey(companyId, new Date(schedule.startsAt), new Date(schedule.endsAt));
 
             this.cacheService.removeData(key);
         }

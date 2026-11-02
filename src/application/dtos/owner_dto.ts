@@ -1,4 +1,5 @@
-import { ApiResponse, CompanyDto } from "@application";
+import { ApiResponse } from "./api_response";
+import { CompanyDto } from "./company_dto";
 import { IOwner } from "@domain";
 
 export class OwnerResponseDto extends ApiResponse {    

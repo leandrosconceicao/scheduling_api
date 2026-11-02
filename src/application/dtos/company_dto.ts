@@ -1,4 +1,5 @@
-import { ApiResponse, BaseDto } from "@application";
+import { ApiResponse } from "./api_response";
+import { BaseDto } from "./base_dto";
 import { GeolocationType, IAddress, ICompany, ICompanyConfiguration, IScheduleType, ISocial } from "@domain";
 
 
