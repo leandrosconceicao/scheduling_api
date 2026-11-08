@@ -1,8 +1,8 @@
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { CompanyModel } from "@domain";
-import { uploadedFiles } from "../support/fakes";
+import { deletedFiles, uploadedFiles } from "../support/fakes";
 import {
-    api, bearer, client, companyPayload, createCompany, createOwnerWithToken, initDatabase, resetState, seedAdmin,
+    api, bearer, client, companyPayload, createCompany, createOwnerWithToken, initDatabase, makePng, resetState, seedAdmin,
 } from "../support/helpers";
 
 describe("Empresas", () => {
@@ -217,12 +217,56 @@ describe("Empresas", () => {
             const { id } = await createCompany(adminToken, owner.ownerId);
 
             const res = await api().put(`/company/update_logo/${id}`).set(bearer(owner.token))
-                .attach("file", Buffer.from("conteudo-da-imagem"), "logo.png");
+                .attach("file", await makePng(), "logo.png");
 
             expect(res.status).toBe(200);
-            expect(res.body.dados.logoUrl).toBe(`https://storage.test/${id}/logo.png`);
-            expect(uploadedFiles).toEqual([{ path: `${id}/logo.png`, size: "conteudo-da-imagem".length }]);
+            expect(res.body.dados.logoUrl).toMatch(new RegExp(`^https://storage.test/${id}/logo-[0-9a-f-]{36}\\.webp$`));
+            expect(uploadedFiles).toHaveLength(1);
+            expect(uploadedFiles[0].path).toBe(res.body.dados.logoUrl.replace("https://storage.test/", ""));
             expect((await CompanyModel.findById(id))?.logoUrl).toBe(res.body.dados.logoUrl);
+        });
+
+        it("redimensiona para no máximo 512 px e converte para WebP", async () => {
+            const { id } = await createCompany(adminToken, owner.ownerId);
+
+            await api().put(`/company/update_logo/${id}`).set(bearer(owner.token)).attach("file", await makePng(2000, 1000), "logo.png");
+
+            const { default: sharp } = await import("sharp");
+            const meta = await sharp(uploadedFiles[0].buffer).metadata();
+            expect(meta).toMatchObject({ format: "webp", width: 512, height: 256 });
+        });
+
+        it("ao trocar o logo, remove o arquivo anterior do storage", async () => {
+            const { id } = await createCompany(adminToken, owner.ownerId);
+
+            const first = await api().put(`/company/update_logo/${id}`).set(bearer(owner.token)).attach("file", await makePng(), "a.png");
+            const second = await api().put(`/company/update_logo/${id}`).set(bearer(owner.token)).attach("file", await makePng(), "b.png");
+
+            expect(second.body.dados.logoUrl).not.toBe(first.body.dados.logoUrl);
+            expect(deletedFiles).toEqual([first.body.dados.logoUrl.replace("https://storage.test/", "")]);
+        });
+
+        it("rejeita arquivo que não é imagem, mesmo com MIME de imagem (406)", async () => {
+            const { id } = await createCompany(adminToken, owner.ownerId);
+
+            const res = await api().put(`/company/update_logo/${id}`).set(bearer(owner.token))
+                .attach("file", Buffer.from("conteudo-qualquer"), { filename: "logo.png", contentType: "image/png" });
+
+            expect(res.status).toBe(406);
+            expect(uploadedFiles).toHaveLength(0);
+        });
+
+        it("rejeita MIME não permitido (406) e arquivo acima de 2 MB (406)", async () => {
+            const { id } = await createCompany(adminToken, owner.ownerId);
+
+            const pdf = await api().put(`/company/update_logo/${id}`).set(bearer(owner.token))
+                .attach("file", Buffer.from("%PDF-1.4"), { filename: "x.pdf", contentType: "application/pdf" });
+            const big = await api().put(`/company/update_logo/${id}`).set(bearer(owner.token))
+                .attach("file", Buffer.alloc(2 * 1024 * 1024 + 1), { filename: "x.png", contentType: "image/png" });
+
+            expect(pdf.status).toBe(406);
+            expect(big.status).toBe(406);
+            expect(uploadedFiles).toHaveLength(0);
         });
 
         it("outro owner não envia logo (403) e nada vai ao storage", async () => {
@@ -230,15 +274,13 @@ describe("Empresas", () => {
             const intruder = await createOwnerWithToken(adminToken, "intruso");
 
             const res = await api().put(`/company/update_logo/${id}`).set(bearer(intruder.token))
-                .attach("file", Buffer.from("x"), "logo.png");
+                .attach("file", await makePng(), "logo.png");
 
             expect(res.status).toBe(403);
             expect(uploadedFiles).toHaveLength(0);
         });
 
-        // DEFEITO CONHECIDO: z.base64() aceita string vazia, então a API grava um arquivo vazio em "<companyId>/" e responde 200.
-        // Remova o ".fails" quando o controller/serviço passar a exigir o arquivo.
-        it.fails("rejeita requisição sem arquivo (406)", async () => {
+        it("rejeita requisição sem arquivo (406)", async () => {
             const { id } = await createCompany(adminToken, owner.ownerId);
 
             const res = await api().put(`/company/update_logo/${id}`).set(bearer(owner.token));

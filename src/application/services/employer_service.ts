@@ -1,6 +1,6 @@
 import { delay, inject, injectable, registry } from "tsyringe";
 import { Request } from "express";
-import { ICompanyRepository, IEmployee, IEmployerRepository, IEmployerService, NotFoundError } from "@domain";
+import { ICloudService, ICompanyRepository, IEmployee, IEmployerRepository, IEmployerService, NotFoundError } from "@domain";
 import { assertCompanyOwner, EMPLOYER_REQUEST_VALIDATION, EMPLOYER_UPDATE_REQUEST_VALIDATION, EmployeeResponseDto, OBJECT_ID_VALIDATION } from "@application";
 
 @injectable()
@@ -14,7 +14,8 @@ export class EmployerService implements IEmployerService {
 
     constructor(
         @inject("IEmployerRepository") private readonly repository: IEmployerRepository,
-        @inject("ICompanyRepository") private readonly companyRepo: ICompanyRepository
+        @inject("ICompanyRepository") private readonly companyRepo: ICompanyRepository,
+        @inject("ICloudService") private readonly cloudService: ICloudService
     ) { }
     getEmployers = async (request: Request): Promise<EmployeeResponseDto> => {
         const companyId = OBJECT_ID_VALIDATION.parse(request.params.companyId);
@@ -43,7 +44,6 @@ export class EmployerService implements IEmployerService {
             .transform((value) => {
                 return <IEmployee>{
                     name: value.name,
-                    profilePhotoUrl: value.profilePhotoUrl,
                     companyId: companyId
                 }
             })
@@ -69,20 +69,38 @@ export class EmployerService implements IEmployerService {
         const updateEmployer = EMPLOYER_UPDATE_REQUEST_VALIDATION
             .transform((value) => {
                 return <Partial<IEmployee>>{
-                    name: value.name,
-                    profilePhotoUrl: value.profilePhotoUrl
+                    name: value.name
                 }
             })
             .parse(request.body);
 
         if (updateEmployer.name) employer.name = updateEmployer.name;
-        if (updateEmployer.profilePhotoUrl) employer.profilePhotoUrl = updateEmployer.profilePhotoUrl;
 
         const newEmployer = await this.repository.updateEmployer(employer._id, employer);
 
         return new EmployeeResponseDto(newEmployer)
     }
 
+
+    updatePhoto = async (request: Request): Promise<EmployeeResponseDto> => {
+
+        const employer = await this.getEmployer(request);
+
+        const companyId = String(employer.companyId);
+
+        // Valida a permissão antes do upload, para não gravar arquivos no storage de outra empresa
+        await this.assertCompanyOwnership(request, companyId);
+
+        const previousPhotoUrl = employer.profilePhotoUrl;
+
+        employer.profilePhotoUrl = await this.cloudService.uploadImage(companyId, `employees/${employer._id}`, request.file?.buffer, 256);
+
+        const newEmployer = await this.repository.updateEmployer(employer._id, employer);
+
+        await this.cloudService.deleteFileByUrl(companyId, previousPhotoUrl);
+
+        return new EmployeeResponseDto(newEmployer);
+    }
 
     deleteEmployerById = async (request: Request): Promise<EmployeeResponseDto> => {
         const employer = await this.getEmployer(request);

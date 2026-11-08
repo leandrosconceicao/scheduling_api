@@ -1,12 +1,9 @@
 import { Router } from "express";
 import { container } from "tsyringe";
-import multer from "multer";
-import { validateAdminToken, validateOwnerToken, validateToken } from "@application";
+import { uploadImage, validateAdminToken, validateOwnerToken, validateToken } from "@application";
 import { CompanyController, EmployerController, ScheduleController } from "@controllers";
 
 const companyRouter = Router();
-
-const upload = multer();
 
 const companyCtrl = container.resolve(CompanyController);
 const employerCtrl = container.resolve(EmployerController);
@@ -35,8 +32,11 @@ companyRouter.route("/company/employees/:companyId/:id")
     .delete(validateOwnerToken, employerCtrl.deleteEmployerById)
     
 
+companyRouter.route("/company/employees/:companyId/:id/photo")
+    .put(validateOwnerToken, uploadImage, employerCtrl.updatePhoto);
+
 companyRouter.route("/company/update_logo/:companyId")
-    .put(validateOwnerToken, upload.single("file"), companyCtrl.uploadLogo);
+    .put(validateOwnerToken, uploadImage, companyCtrl.uploadLogo);
 
 companyRouter.route("/company/:companyId/schedules")
     .get(validateOwnerToken, scheduleCtrl.getCompanySchedules);

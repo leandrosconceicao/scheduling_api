@@ -78,7 +78,7 @@ export async function createScheduleType(ownerToken: string, companyId: string, 
 
 export async function createEmployee(ownerToken: string, companyId: string, name = "João") {
     const res = await api().post(`/company/employees/${companyId}`).set(bearer(ownerToken))
-        .send({ name, profilePhotoUrl: "https://img.test/joao.png" });
+        .send({ name });
     return { res, id: res.body.dados?._id as string };
 }
 
@@ -111,4 +111,11 @@ export async function setupCompanyScenario() {
     const employee = await createEmployee(owner.token, company.id);
 
     return { adminToken, owner, companyId: company.id, typeId: type.id, employeeId: employee.id };
+}
+
+
+/** Gera uma imagem PNG real (o servidor valida o conteúdo com sharp). */
+export async function makePng(width = 1000, height = 800) {
+    const { default: sharp } = await import("sharp");
+    return sharp({ create: { width, height, channels: 3, background: "#336699" } }).png().toBuffer();
 }

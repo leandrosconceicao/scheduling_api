@@ -39,6 +39,16 @@ export class EmployerController {
             next(e);
         }
     }
+    updatePhoto = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const result = await this.service.updatePhoto(req);
+
+            return res.status(result.statusCode).json(result);
+
+        } catch (e) {
+            next(e);
+        }
+    }
     deleteEmployerById = async (req: Request, res: Response, next: NextFunction) => {
         try {
             

@@ -2,7 +2,8 @@ import { NextFunction, Request, Response } from "express";
 import { getDownloadURL, getStorage } from "firebase-admin/storage";
 import { injectable, registry, delay } from "tsyringe";
 import { OBJECT_ID_VALIDATION } from "../validations/default_validations";
-import z from "zod";
+import { randomUUID } from "node:crypto";
+import { processImage } from "./image_processor";
 import { getDatabase } from "firebase-admin/database";
 import { ISchedule } from "@/domain/interfaces/i_schedule";
 import { ScheduleResponseDto } from "../dtos/schedule_dto";
@@ -41,25 +42,38 @@ export class CloudService implements ICloudService {
     }
 
 
-    uploadFile = async (companyId: string, base64File: string, filename: string): Promise<string> => {
+    private companyPath = (companyId: string) => isDevelopment ? `development/${companyId}` : companyId;
+
+    uploadImage = async (companyId: string, folder: string, file: Buffer | undefined, maxDimension: number): Promise<string> => {
 
         OBJECT_ID_VALIDATION.parse(companyId);
 
-        z.base64({
-            error: "Arquivo enviado é invalido"
-        }).parse(base64File);
+        // O nome do arquivo é gerado no servidor: nunca usa o nome enviado pelo cliente
+        const image = await processImage(file, maxDimension);
 
         const bucket = getStorage().bucket();
 
-        const imageBuffer = Buffer.from(base64File ?? "", "base64");
+        const uploadFile = bucket.file(`${this.companyPath(companyId)}/${folder}-${randomUUID()}.webp`);
 
-        const path = isDevelopment ? `development/${companyId}` : companyId ?? "";
+        await uploadFile.save(image, { contentType: "image/webp", resumable: false });
 
-        const uploadFIle = bucket.file(`${path}/${filename}`);
+        return getDownloadURL(uploadFile);
+    }
 
-        await uploadFIle.save(imageBuffer);
+    deleteFileByUrl = async (companyId: string, url: string | undefined): Promise<void> => {
+        try {
+            if (!url) return;
 
-        return getDownloadURL(uploadFIle);
+            const { pathname } = new URL(url);
+            const objectPath = decodeURIComponent(pathname.includes("/o/") ? pathname.split("/o/")[1] : pathname.slice(1));
+
+            // Só apaga arquivos da própria empresa (URLs externas ou de outra empresa são ignoradas)
+            if (!objectPath.startsWith(`${this.companyPath(companyId)}/`)) return;
+
+            await getStorage().bucket().file(objectPath).delete({ ignoreNotFound: true });
+        } catch (e) {
+            console.warn("Falha ao remover arquivo antigo do storage", e);
+        }
     }
 
     sendEventlockSchedule(request: Request, response: Response, next: NextFunction): Response {

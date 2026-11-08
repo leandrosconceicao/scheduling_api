@@ -6,6 +6,7 @@ export interface IEmployerService {
     getEmployerById(request: Request) : Promise<EmployeeResponseDto>;
     updateEmployer(request: Request) : Promise<EmployeeResponseDto>;
     deleteEmployerById(request: Request) : Promise<EmployeeResponseDto>;
+    updatePhoto(request: Request) : Promise<EmployeeResponseDto>;
     getEmployers(request: Request) : Promise<EmployeeResponseDto>;
     getCompanyEmployers(request: Request) : Promise<EmployeeResponseDto>;
 }

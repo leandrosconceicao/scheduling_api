@@ -24,7 +24,7 @@ describe("Jornada completa (ponta a ponta)", () => {
         const ownerToken = ownerLogin.body.dados.token;
         const type = await api().post(`/schedules/types/${companyId}`).set(bearer(ownerToken)).send({ name: "Escova", price: 80 }).expect(200);
         const employee = await api().post(`/company/employees/${companyId}`).set(bearer(ownerToken))
-            .send({ name: "Júlia", profilePhotoUrl: "https://img.test/julia.png" }).expect(200);
+            .send({ name: "Júlia" }).expect(200);
 
         // 2. Cliente abre o app do estabelecimento a partir do subdomínio
         const clientAuth = bearer(clientToken({ uid: "cli-1", name: "Cliente Um", email: "cli1@teste.com" }));

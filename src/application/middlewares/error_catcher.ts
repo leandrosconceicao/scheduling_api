@@ -1,6 +1,7 @@
 import express, { NextFunction } from "express";
 import {z} from "zod";
 import Jwt from "jsonwebtoken";
+import { MulterError } from "multer";
 import { ApiResponse } from "@application";
 import { DuplicatedData } from "@domain";
 
@@ -10,6 +11,11 @@ export function errorCatcher(err: Error, req: express.Request, res: express.Resp
     if (err instanceof z.ZodError) {
         
         const msg = err.issues.map((err) => !err.path.length ? `${err.message}` : `Parametro (${err.path}) é inválido, ${err.message}`).join(", ");
+
+        return res.status(406).json(ApiResponse.parameterInvalid(msg));
+    }
+    if (err instanceof MulterError) {
+        const msg = err.code === "LIMIT_FILE_SIZE" ? "Arquivo excede o tamanho máximo de 2 MB" : "Arquivo enviado é inválido";
 
         return res.status(406).json(ApiResponse.parameterInvalid(msg));
     }

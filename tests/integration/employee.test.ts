@@ -1,7 +1,8 @@
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { EmployeeModel } from "@domain";
+import { deletedFiles, uploadedFiles } from "../support/fakes";
 import {
-    api, bearer, client, createCompany, createEmployee, createOwnerWithToken, initDatabase, resetState, seedAdmin,
+    api, bearer, client, createCompany, createEmployee, createOwnerWithToken, initDatabase, makePng, resetState, seedAdmin,
 } from "../support/helpers";
 
 describe("Funcionários", () => {
@@ -42,14 +43,14 @@ describe("Funcionários", () => {
             expect(await EmployeeModel.countDocuments()).toBe(0);
         });
 
-        it("rejeita foto com URL inválida e nome ausente (406)", async () => {
-            const badUrl = await api().post(`/company/employees/${companyId}`).set(bearer(owner.token))
-                .send({ name: "Ana", profilePhotoUrl: "nao-e-url" });
-            const noName = await api().post(`/company/employees/${companyId}`).set(bearer(owner.token))
-                .send({ profilePhotoUrl: "https://img.test/a.png" });
+        it("rejeita nome ausente (406) e ignora profilePhotoUrl enviado no body", async () => {
+            const noName = await api().post(`/company/employees/${companyId}`).set(bearer(owner.token)).send({});
+            const withUrl = await api().post(`/company/employees/${companyId}`).set(bearer(owner.token))
+                .send({ name: "Ana", profilePhotoUrl: "https://img.test/a.png" });
 
-            expect(badUrl.status).toBe(406);
             expect(noName.status).toBe(406);
+            expect(withUrl.status).toBe(200);
+            expect(withUrl.body.dados.profilePhotoUrl).toBeUndefined();
         });
 
         it("retorna 404 para empresa inexistente", async () => {
@@ -123,12 +124,56 @@ describe("Funcionários", () => {
             expect(res.status).toBe(404);
         });
 
-        it("dono atualiza nome e foto", async () => {
+        it("dono atualiza o nome e o body não altera a foto", async () => {
             const res = await api().patch(`/company/employees/${companyId}/${employeeId}`).set(bearer(owner.token))
                 .send({ name: "Ana Paula", profilePhotoUrl: "https://img.test/nova.png" });
 
             expect(res.status).toBe(200);
-            expect(res.body.dados).toMatchObject({ name: "Ana Paula", profilePhotoUrl: "https://img.test/nova.png" });
+            expect(res.body.dados.name).toBe("Ana Paula");
+            expect(res.body.dados.profilePhotoUrl).toBeUndefined();
+        });
+
+        describe("PUT /company/employees/:companyId/:id/photo", () => {
+            const photoPath = () => `/company/employees/${companyId}/${employeeId}/photo`;
+
+            it("dono envia a foto, que é convertida para WebP 256 px e a URL salva no funcionário", async () => {
+                const res = await api().put(photoPath()).set(bearer(owner.token)).attach("file", await makePng(), "foto.png");
+
+                expect(res.status).toBe(200);
+                expect(res.body.dados.profilePhotoUrl).toMatch(
+                    new RegExp(`^https://storage.test/${companyId}/employees/${employeeId}-[0-9a-f-]{36}\\.webp$`));
+                expect((await EmployeeModel.findById(employeeId))?.profilePhotoUrl).toBe(res.body.dados.profilePhotoUrl);
+
+                const { default: sharp } = await import("sharp");
+                expect(await sharp(uploadedFiles[0].buffer).metadata()).toMatchObject({ format: "webp", width: 256, height: 205 });
+            });
+
+            it("ao trocar a foto, remove a anterior", async () => {
+                const first = await api().put(photoPath()).set(bearer(owner.token)).attach("file", await makePng(), "a.png");
+                await api().put(photoPath()).set(bearer(owner.token)).attach("file", await makePng(), "b.png");
+
+                expect(deletedFiles).toEqual([first.body.dados.profilePhotoUrl.replace("https://storage.test/", "")]);
+            });
+
+            it("outro owner recebe 403 e nada vai ao storage", async () => {
+                const intruder = await createOwnerWithToken(adminToken, "intruso");
+
+                const res = await api().put(photoPath()).set(bearer(intruder.token)).attach("file", await makePng(), "foto.png");
+
+                expect(res.status).toBe(403);
+                expect(uploadedFiles).toHaveLength(0);
+            });
+
+            it("rejeita requisição sem arquivo, arquivo inválido e MIME não permitido (406)", async () => {
+                const none = await api().put(photoPath()).set(bearer(owner.token));
+                const fake = await api().put(photoPath()).set(bearer(owner.token))
+                    .attach("file", Buffer.from("nao-e-imagem"), { filename: "f.png", contentType: "image/png" });
+                const gif = await api().put(photoPath()).set(bearer(owner.token))
+                    .attach("file", Buffer.from("GIF89a"), { filename: "f.gif", contentType: "image/gif" });
+
+                expect([none.status, fake.status, gif.status]).toEqual([406, 406, 406]);
+                expect(uploadedFiles).toHaveLength(0);
+            });
         });
 
         it("outro owner não atualiza nem exclui (403)", async () => {

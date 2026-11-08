@@ -52,13 +52,16 @@ function ref(path: string): any {
 export const fakeDatabase = { ref: (path: string) => ref(path) };
 
 // ---- Firebase Storage ----
-export const uploadedFiles: { path: string, size: number }[] = [];
+export const uploadedFiles: { path: string, size: number, buffer: Buffer }[] = [];
+
+export const deletedFiles: string[] = [];
 
 export const fakeStorage = {
     bucket: () => ({
         file: (path: string) => ({
             path,
-            save: async (buffer: Buffer) => { uploadedFiles.push({ path, size: buffer.length }); },
+            save: async (buffer: Buffer) => { uploadedFiles.push({ path, size: buffer.length, buffer }); },
+            delete: async () => { deletedFiles.push(path); },
         }),
     }),
 };
@@ -70,4 +73,5 @@ export function resetFakes() {
     ttls.clear();
     dbEvents.length = 0;
     uploadedFiles.length = 0;
+    deletedFiles.length = 0;
 }

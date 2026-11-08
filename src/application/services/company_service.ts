@@ -95,13 +95,11 @@ export class CompanyService implements ICompanyService {
         // Valida a permissão antes do upload, para não gravar arquivos no storage de outra empresa
         assertCompanyOwner(request, company);
 
-        const logoUrl = await this.cloudService.uploadFile(
-            id,
-            request.file?.buffer.toString("base64") ?? "",
-            request.file?.originalname ?? ""
-        );
+        const logoUrl = await this.cloudService.uploadImage(id, "logo", request.file?.buffer, 512);
 
         const updatedCompany = await this.repository.updateCompany(id, { logoUrl });
+
+        await this.cloudService.deleteFileByUrl(id, company.logoUrl);
 
         return new CompanyResponseDto(updatedCompany);
     }
