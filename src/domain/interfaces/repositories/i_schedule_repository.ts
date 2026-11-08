@@ -1,5 +1,15 @@
 import { ISchedule, IScheduleCancellation, IScheduleType } from "@domain";
 
+export interface IClientScheduleFilter {
+    // Ausente: agendamentos do cliente em todas as empresas
+    companyId?: string,
+    clientUid: string,
+    period: "upcoming" | "past" | "all",
+    includeCanceled: boolean,
+    page: number,
+    limit: number,
+}
+
 
 
 export interface IScheduleRepository {
@@ -15,5 +25,5 @@ export interface IScheduleRepository {
     addNewScheduleType(type: IScheduleType) : Promise<IScheduleType>;
     removeScheduleType(id: string) : Promise<void>;
     updateScheduleTypeById(id: string, data: Partial<IScheduleType>) : Promise<IScheduleType | null>;
-    getClientSchedules(companyId: string, clientUid: string) : Promise<ISchedule[]>;
+    getClientSchedules(filter: IClientScheduleFilter) : Promise<ISchedule[]>;
 }

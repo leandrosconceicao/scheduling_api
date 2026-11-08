@@ -35,6 +35,18 @@ export const SCHEDULE_FILTER_VALIDATION = z.object({
     endsAt: z.iso.date().optional(),
 })
 
+export const CLIENT_SCHEDULE_FILTER_VALIDATION = z.object({
+    // upcoming: a partir de agora (padrão); past: já iniciados; all: todos
+    period: z.enum(["upcoming", "past", "all"], {
+        error: "Período inválido (upcoming, past ou all)"
+    }).default("upcoming"),
+    includeCanceled: z.stringbool({
+        error: "Informe true ou false"
+    }).default(false),
+    page: z.coerce.number().int().min(1, { error: "Página deve ser maior ou igual a 1" }).default(1),
+    limit: z.coerce.number().int().min(1, { error: "Limite deve ser entre 1 e 100" }).max(100, { error: "Limite deve ser entre 1 e 100" }).default(20),
+})
+
 export const SCHEDULE_TYPE_REQUEST_VALIDATION = z.object({
     name: STRING_VALIDATION,
     price: z.number()

@@ -1,6 +1,6 @@
 import { injectable, registry, delay } from "tsyringe";
 import mongoose from "mongoose";
-import { IScheduleRepository, ISchedule, ScheduleModel, IScheduleType, ScheduleTypeModel, IScheduleCancellation } from "@domain";
+import { IScheduleRepository, IClientScheduleFilter, ISchedule, ScheduleModel, IScheduleType, ScheduleTypeModel, IScheduleCancellation } from "@domain";
 
 var ObjectId = mongoose.Types.ObjectId;
 
@@ -13,11 +13,31 @@ var ObjectId = mongoose.Types.ObjectId;
 ])
 export class ScheduleRepository implements IScheduleRepository {
     
-    getClientSchedules(companyId: string, clientUid: string): Promise<ISchedule[]> {
-        return ScheduleModel.find({
-            companyId: new ObjectId(companyId),
-            "client.uid": clientUid
-        })
+    getClientSchedules(filter: IClientScheduleFilter): Promise<ISchedule[]> {
+        const now = new Date();
+
+        const query: Record<string, unknown> = {
+            "client.uid": filter.clientUid,
+        };
+
+        if (filter.companyId) query.companyId = new ObjectId(filter.companyId);
+
+        if (!filter.includeCanceled) query.deleted = null;
+
+        if (filter.period === "upcoming") query.startsAt = { $gte: now };
+        if (filter.period === "past") query.startsAt = { $lt: now };
+
+        // Próximos: do mais próximo ao mais distante; histórico: do mais recente ao mais antigo
+        const order = filter.period === "upcoming" ? 1 : -1;
+
+        return ScheduleModel.find(query)
+            .sort({ startsAt: order })
+            .skip((filter.page - 1) * filter.limit)
+            .limit(filter.limit)
+            .populate("typeDetail")
+            .populate({ path: "employeeDetail", select: "name profilePhotoUrl" })
+            // Identifica a empresa de cada agendamento (necessário na consulta sem companyId)
+            .populate({ path: "companyDetail", select: "name logoUrl subdomain" });
     }
 
     getSchedule(companyId: string, startsAt: Date, endsAt: Date): Promise<ISchedule | null> {

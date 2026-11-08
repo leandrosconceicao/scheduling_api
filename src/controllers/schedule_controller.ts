@@ -43,6 +43,16 @@ export class ScheduleController {
         }
     }
 
+    getClientSchedules = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const result = await this.service.getClientSchedules(req);
+
+            return res.status(result.statusCode).json(result);
+        } catch (e) {
+            next(e);
+        }
+    }
+
     getScheduleById = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const result = await this.service.getScheduleById(req);

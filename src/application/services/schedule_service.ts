@@ -4,7 +4,7 @@ import { delay, inject, injectable, registry } from "tsyringe";
 import { Types } from "mongoose";
 
 import { IScheduleService, IScheduleRepository, ICompanyRepository, ICacheService, ISchedule, IScheduleType, ICompany, NotFoundError, ScheduleState, BusinessHours, IClient, Forbidden, CancellationOrigin, IScheduleCancellation } from "@domain";
-import { assertCompanyOwner, OBJECT_ID_VALIDATION, SCHEDULE_CONFIRM_VALIDATION, SCHEDULE_FILTER_VALIDATION, SCHEDULE_VALIDATION, SCHEDULE_LOCK_REQUEST_VALIDATION, SCHEDULE_TYPE_REQUEST_VALIDATION, SCHEDULE_TYPE_UPDATE_REQUEST_VALIDATION, ScheduleResponseDto, ScheduleTypeResponseDto, SCHEDULE_CANCEL_VALIDATION } from "@application";
+import { assertCompanyOwner, OBJECT_ID_VALIDATION, SCHEDULE_CONFIRM_VALIDATION, SCHEDULE_FILTER_VALIDATION, SCHEDULE_VALIDATION, SCHEDULE_LOCK_REQUEST_VALIDATION, SCHEDULE_TYPE_REQUEST_VALIDATION, SCHEDULE_TYPE_UPDATE_REQUEST_VALIDATION, ScheduleResponseDto, ScheduleTypeResponseDto, SCHEDULE_CANCEL_VALIDATION, CLIENT_SCHEDULE_FILTER_VALIDATION } from "@application";
 
 
 @injectable()
@@ -318,6 +318,26 @@ export class ScheduleService implements IScheduleService {
 
         return mappedSchedules.filter((e) => e.state !== ScheduleState.closed);
     }
+    // Agendamentos confirmados do cliente autenticado (reservas temporárias ficam só no cache).
+    // Com :companyId, restringe à empresa; sem ele, traz os de todas as empresas.
+    getClientSchedules = async (request: Request): Promise<ScheduleResponseDto> => {
+        const companyId = request.params.companyId !== undefined
+            ? OBJECT_ID_VALIDATION.parse(request.params.companyId)
+            : undefined;
+
+        const filters = CLIENT_SCHEDULE_FILTER_VALIDATION.parse(request.query);
+
+        if (companyId) await this.getCompany(companyId);
+
+        const schedules = await this.repository.getClientSchedules({
+            companyId,
+            clientUid: (request.autenticatedUser as IClient).uid,
+            ...filters,
+        });
+
+        return new ScheduleResponseDto(schedules);
+    }
+
     getScheduleById = async (request: Request): Promise<ScheduleResponseDto> => {
 
         const schedule = await this.getClientSchedule(request);

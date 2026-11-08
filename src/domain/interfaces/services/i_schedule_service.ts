@@ -7,6 +7,7 @@ export interface IScheduleService {
     getSchedules(request: Request): Promise<ScheduleResponseDto>;
     getCompanySchedules(request: Request): Promise<ScheduleResponseDto>;
     getScheduleById(request: Request): Promise<ScheduleResponseDto>;
+    getClientSchedules(request: Request): Promise<ScheduleResponseDto>;
     cancelSchedule(request: Request): Promise<ScheduleResponseDto>;
     cancelScheduleByCompany(request: Request): Promise<ScheduleResponseDto>;
     lockSchedule(req: Request): Promise<ScheduleResponseDto>;

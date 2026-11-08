@@ -72,6 +72,10 @@ scheduleSchema.index({
     unique: true, partialFilterExpression: { deleted: null }
 });
 
+// Consulta dos agendamentos do cliente
+scheduleSchema.index({ companyId: 1, "client.uid": 1, startsAt: 1 });
+scheduleSchema.index({ "client.uid": 1, startsAt: 1 });
+
 scheduleSchema.virtual("companyDetail", {
     justOne: true,
     ref: "companies",

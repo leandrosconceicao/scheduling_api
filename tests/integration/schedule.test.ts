@@ -2,7 +2,7 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { CancellationOrigin, ScheduleModel, ScheduleState } from "@domain";
 import { dbEvents, fakeCache, clientToken } from "../support/fakes";
 import {
-    api, bearer, client, createCompany, createOwnerWithToken, initDatabase, localDate, resetState, setupCompanyScenario, slot,
+    api, bearer, client, createCompany, createEmployee, createOwnerWithToken, createScheduleType, initDatabase, localDate, resetState, setupCompanyScenario, slot,
 } from "../support/helpers";
 
 type Scenario = Awaited<ReturnType<typeof setupCompanyScenario>>;
@@ -337,6 +337,199 @@ describe("Agendamentos", () => {
 
             expect((await api().get(`/company/${s.companyId}/schedules`).set(bearer(intruder.token))).status).toBe(403);
             expect((await api().get(`/company/${s.companyId}/schedules`).set(bearer(ana.token))).status).toBe(401);
+        });
+    });
+
+    describe("GET /schedules/:companyId/me (agendamentos do cliente)", () => {
+        const mine = (c = ana, query: Record<string, unknown> = {}, companyId = s.companyId) =>
+            api().get(`/schedules/${companyId}/me`).query(query).set(bearer(c.token));
+
+        /** Grava direto no banco (permite datas passadas, que a API não aceita agendar). */
+        const seed = (uid: string, hoursFromNow: number, extra: Record<string, unknown> = {}) => {
+            const startsAt = new Date(Date.now() + hoursFromNow * 3_600_000);
+            return ScheduleModel.create({
+                companyId: s.companyId, typeId: s.typeId, employeeId: s.employeeId, state: ScheduleState.scheduled,
+                startsAt, endsAt: new Date(startsAt.getTime() + 30 * 60_000),
+                client: { uid, name: `Cliente ${uid}`, phoneNumber: PHONE },
+                ...extra,
+            });
+        };
+
+        const ids = (res: any) => res.body.dados.map((e: any) => e._id);
+
+        it("lista os próximos agendamentos do cliente, do mais próximo ao mais distante, com serviço e funcionário", async () => {
+            const later = await book(ana, slot(15, 0, 30, 2));
+            const sooner = await book(ana, slot(10));
+
+            const res = await mine();
+
+            expect(res.status).toBe(200);
+            expect(ids(res)).toEqual([sooner.id, later.id]);
+            expect(res.body.dados[0]).toMatchObject({
+                state: ScheduleState.scheduled,
+                client: { uid: "ana", phoneNumber: PHONE },
+                typeDetail: { name: "Corte" },
+                employeeDetail: { _id: s.employeeId, name: "João" },
+            });
+        });
+
+        it("não retorna agendamentos de outros clientes nem de outras empresas", async () => {
+            const own = await book(ana, slot(10));
+            await book(bruno, slot(11));
+            const otherOwner = await createOwnerWithToken(s.adminToken, "outro");
+            const otherCompany = await createCompany(s.adminToken, otherOwner.ownerId);
+            await ScheduleModel.create({
+                companyId: otherCompany.id, typeId: s.typeId, employeeId: s.employeeId, state: ScheduleState.scheduled,
+                ...Object.fromEntries(Object.entries(slot(12)).map(([k, v]) => [k, new Date(v)])),
+                client: { uid: "ana", name: "Ana", phoneNumber: PHONE },
+            });
+
+            const res = await mine();
+
+            expect(ids(res)).toEqual([own.id]);
+            expect(JSON.stringify(res.body)).not.toContain("bruno");
+        });
+
+        it("reservas temporárias (ainda não confirmadas) não aparecem", async () => {
+            await lock(ana, slot(10));
+
+            expect((await mine()).body.dados).toEqual([]);
+        });
+
+        it("period=past traz o histórico do mais recente ao mais antigo; period=all traz tudo", async () => {
+            const old = await seed("ana", -48);
+            const recent = await seed("ana", -2);
+            const next = await seed("ana", 24);
+
+            expect(ids(await mine(ana, { period: "past" }))).toEqual([recent.id, old.id]);
+            expect(ids(await mine(ana, { period: "all" }))).toEqual([next.id, recent.id, old.id]);
+            expect(ids(await mine())).toEqual([next.id]);
+        });
+
+        it("cancelados só aparecem com includeCanceled=true, com o motivo do cancelamento", async () => {
+            const { id } = await book(ana, slot(10));
+            await api().delete(`/company/${s.companyId}/schedules/${id}`).set(bearer(s.owner.token)).send({ reason: "Barbeiro doente" });
+
+            expect((await mine()).body.dados).toEqual([]);
+
+            const res = await mine(ana, { includeCanceled: "true" });
+
+            expect(ids(res)).toEqual([id]);
+            expect(res.body.dados[0].cancellation).toMatchObject({ canceledBy: CancellationOrigin.company, reason: "Barbeiro doente" });
+        });
+
+        it("pagina os resultados (page e limit)", async () => {
+            const created = [];
+            for (let h = 1; h <= 5; h++) created.push((await seed("ana", h * 24)).id);
+
+            const page1 = await mine(ana, { limit: 2 });
+            const page3 = await mine(ana, { limit: 2, page: 3 });
+
+            expect(ids(page1)).toEqual(created.slice(0, 2));
+            expect(ids(page3)).toEqual(created.slice(4));
+        });
+
+        it.each([
+            ["period inválido", { period: "futuro" }],
+            ["includeCanceled inválido", { includeCanceled: "talvez" }],
+            ["page zero", { page: 0 }],
+            ["limit acima de 100", { limit: 101 }],
+        ])("rejeita filtro inválido: %s (406)", async (_, query) => {
+            expect((await mine(ana, query)).status).toBe(406);
+        });
+
+        it("exige token de cliente (401) e retorna 404 para empresa inexistente", async () => {
+            expect((await api().get(`/schedules/${s.companyId}/me`)).status).toBe(401);
+            expect((await api().get(`/schedules/${s.companyId}/me`).set(bearer(s.owner.token))).status).toBe(403);
+            expect((await mine(ana, {}, "64b7f0c2a1b2c3d4e5f60718")).status).toBe(404);
+        });
+    });
+
+    describe("GET /schedules/me (agendamentos do cliente em todas as empresas)", () => {
+        const mineEverywhere = (c = ana, query: Record<string, unknown> = {}) =>
+            api().get("/schedules/me").query(query).set(bearer(c.token));
+
+        const ids = (res: any) => res.body.dados.map((e: any) => e._id);
+
+        /** Segunda empresa com serviço e funcionário próprios. */
+        const otherCompanyScenario = async () => {
+            const owner = await createOwnerWithToken(s.adminToken, "outro");
+            const company = await createCompany(s.adminToken, owner.ownerId, { name: "Salão Dois" });
+            const type = await createScheduleType(owner.token, company.id, "Escova", 80);
+            const employee = await createEmployee(owner.token, company.id, "Maria");
+            return { companyId: company.id, typeId: type.id, employeeId: employee.id };
+        };
+
+        const bookAt = async (c: ReturnType<typeof client>, target: { companyId: string, typeId: string, employeeId: string }, when = slot(10)) => {
+            await api().post(`/lock_schedule/${target.companyId}`).set(bearer(c.token)).send({ ...when, typeId: target.typeId });
+            const res = await api().post(`/schedules/${target.companyId}`).set(bearer(c.token))
+                .send({ ...when, typeId: target.typeId, employeeId: target.employeeId, phoneNumber: PHONE });
+            return res.body.dados._id as string;
+        };
+
+        it("lista os agendamentos do cliente em todas as empresas, identificando cada empresa", async () => {
+            const other = await otherCompanyScenario();
+            const here = await bookAt(ana, s, slot(10));
+            const there = await bookAt(ana, other, slot(15));
+
+            const res = await mineEverywhere();
+
+            expect(res.status).toBe(200);
+            expect(ids(res)).toEqual([here, there]);
+            expect(res.body.dados[0]).toMatchObject({ companyDetail: { _id: s.companyId, name: "Barbearia Teste" }, typeDetail: { name: "Corte" } });
+            expect(res.body.dados[1]).toMatchObject({
+                companyDetail: { _id: other.companyId, name: "Salão Dois", subdomain: expect.any(String) },
+                typeDetail: { name: "Escova" },
+                employeeDetail: { name: "Maria" },
+            });
+            // Da empresa, só os dados de identificação
+            expect(res.body.dados[0].companyDetail).not.toHaveProperty("cnpj");
+            expect(res.body.dados[0].companyDetail).not.toHaveProperty("ownerId");
+        });
+
+        it("não retorna agendamentos de outros clientes", async () => {
+            const other = await otherCompanyScenario();
+            const own = await bookAt(ana, s, slot(10));
+            await bookAt(bruno, s, slot(11));
+            await bookAt(bruno, other, slot(11));
+
+            const res = await mineEverywhere();
+
+            expect(ids(res)).toEqual([own]);
+            expect(JSON.stringify(res.body)).not.toContain("bruno");
+        });
+
+        it("aplica os mesmos filtros da consulta por empresa (period, includeCanceled, paginação)", async () => {
+            const other = await otherCompanyScenario();
+            const first = await bookAt(ana, s, slot(10));
+            const second = await bookAt(ana, other, slot(11));
+            await api().delete(`/schedules/${other.companyId}/${second}`).set(bearer(ana.token));
+
+            expect(ids(await mineEverywhere())).toEqual([first]);
+            expect(ids(await mineEverywhere(ana, { includeCanceled: "true" }))).toEqual([first, second]);
+            expect(ids(await mineEverywhere(ana, { includeCanceled: "true", limit: 1, page: 2 }))).toEqual([second]);
+            expect((await mineEverywhere(ana, { period: "past" })).body.dados).toEqual([]);
+            expect((await mineEverywhere(ana, { period: "futuro" })).status).toBe(406);
+        });
+
+        it("cliente sem agendamentos recebe lista vazia", async () => {
+            const res = await mineEverywhere(client("novo"));
+
+            expect(res.status).toBe(200);
+            expect(res.body.dados).toEqual([]);
+        });
+
+        it("exige token de cliente (401 sem token, 403 com token de owner)", async () => {
+            expect((await api().get("/schedules/me")).status).toBe(401);
+            expect((await api().get("/schedules/me").set(bearer(s.owner.token))).status).toBe(403);
+        });
+
+        it("a grade por empresa continua funcionando (rota /me não captura ids)", async () => {
+            const date = localDate(1);
+            const res = await api().get(`/schedules/${s.companyId}`).query({ startsAt: date, endsAt: date }).set(bearer(ana.token));
+
+            expect(res.status).toBe(200);
+            expect(res.body.dados.length).toBeGreaterThan(0);
         });
     });
 

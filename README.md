@@ -299,9 +299,21 @@ Reservas (`/lock_schedule`) e confirmações (`/schedules`) só são aceitas se 
 | POST | `/lock_schedule/:companyId` | 🔥 | Reserva temporariamente um horário. Body: `{ startsAt, endsAt, typeId }` |
 | DELETE | `/lock_schedule/:companyId` | 🔥 | Libera a reserva. Body: `{ startsAt, endsAt }` |
 | POST | `/schedules/:companyId` | 🔥 | Confirma o agendamento. Body: `{ startsAt, endsAt, typeId, employeeId, phoneNumber }` |
+| GET | `/schedules/me?period=upcoming&includeCanceled=false&page=1&limit=20` | 🔥 | Agendamentos confirmados do cliente autenticado em **todas** as empresas. Cada item traz `companyDetail` (`name`, `logoUrl`, `subdomain`), além de serviço e funcionário. Mesmos filtros da consulta por empresa |
+| GET | `/schedules/:companyId/me?period=upcoming&includeCanceled=false&page=1&limit=20` | 🔥 | Agendamentos confirmados do cliente autenticado na empresa, com serviço (`typeDetail`) e funcionário (`employeeDetail`). Veja os filtros abaixo |
 | GET | `/schedules/:companyId/:id` | 🔥 | Detalhes de um agendamento (somente o cliente que agendou) |
 | DELETE | `/schedules/:companyId/:id` | 🔥 | Cancela um agendamento (somente o cliente que agendou) |
 | DELETE | `/company/:companyId/schedules/:id` | 🔑 🏢 | Cancelamento pelo estabelecimento. Body: `{ reason }` (obrigatório, até 500 caracteres) |
+
+Filtros de `GET /schedules/me` e `GET /schedules/:companyId/me` (todos opcionais):
+
+| Parâmetro | Valores | Padrão | Descrição |
+|---|---|---|---|
+| `period` | `upcoming`, `past`, `all` | `upcoming` | `upcoming`: a partir de agora, do mais próximo ao mais distante. `past` e `all`: do mais recente ao mais antigo |
+| `includeCanceled` | `true`, `false` | `false` | Inclui os cancelados, com os dados do cancelamento (`cancellation`) |
+| `page` / `limit` | inteiros (`limit` de 1 a 100) | `1` / `20` | Paginação |
+
+Reservas temporárias (`/lock_schedule`) não aparecem nessa consulta, porque ainda não são agendamentos confirmados.
 
 Agendamentos que já passaram não podem ser cancelados. Todo cancelamento fica registrado no agendamento, no campo `cancellation`, com a origem (`client` ou `company`), a data e, quando feito pelo estabelecimento, o motivo.
 
