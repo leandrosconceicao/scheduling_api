@@ -246,7 +246,11 @@ Exemplo de cadastro:
     "defaultPeriodInMinutes": 30,
     "openingHours": "08:00",
     "closingTime": "18:00",
-    "lunchBreak": { "start": "12:00", "end": "13:00" }
+    "lunchBreak": { "start": "12:00", "end": "13:00" },
+    "workingDays": [
+      1, 2, 3, 4, 5,
+      { "day": 6, "openingHours": "08:00", "closingTime": "12:00", "lunchBreak": null }
+    ]
   },
   "social": { "instagram": "@exemplo", "whatsapp": "11999999999" },
   "geoLocation": { "type": "Point", "coordinates": [-46.63, -23.55] }
@@ -259,6 +263,13 @@ Exemplo de cadastro:
 | `openingHours` / `closingTime` | Abertura e fechamento (`HH:mm`, padrão `08:00`–`18:00`) |
 | `lunchBreak` | Intervalo sem atendimento (padrão `12:00`–`13:00`) |
 | `lockSchedulePeriodInMinutes` | Tempo de reserva temporária de um horário (padrão 10 minutos) |
+| `workingDays` | Dias da semana em que a empresa funciona: `0` = domingo … `6` = sábado (padrão: todos os dias). Em dias fora da lista a grade vem vazia e reservas/confirmações são recusadas (400) |
+
+Cada item de `workingDays` pode ser só o número do dia (usa o horário padrão) ou um objeto `{ day, openingHours?, closingTime?, lunchBreak? }` com o horário próprio daquele dia. Campos omitidos herdam o padrão da empresa e `"lunchBreak": null` indica que não há almoço no dia. A resposta sempre devolve os dias no formato de objeto, ordenados.
+
+No `PATCH /company/:id`, `configuration` é parcial: só os campos enviados são alterados. Se `workingDays` for enviado, ele substitui a lista inteira. A configuração resultante (o que foi enviado mesclado com o que já estava salvo) precisa ser coerente, ou seja, abertura antes do fechamento e início do almoço antes do fim, tanto no horário padrão quanto em cada dia. Caso contrário a resposta é 406 e nada é gravado.
+
+Reservas (`/lock_schedule`) e confirmações (`/schedules`) só são aceitas se o horário estiver em um dia de funcionamento, dentro de `openingHours`–`closingTime` e sem cruzar o `lunchBreak`.
 
 ### Funcionários
 

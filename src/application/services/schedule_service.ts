@@ -3,7 +3,7 @@ import { Request } from "express";
 import { delay, inject, injectable, registry } from "tsyringe";
 import { Types } from "mongoose";
 
-import { IScheduleService, IScheduleRepository, ICompanyRepository, ICacheService, ISchedule, IScheduleType, ICompany, NotFoundError, ScheduleState, Horario, IClient, Forbidden, CancellationOrigin, IScheduleCancellation } from "@domain";
+import { IScheduleService, IScheduleRepository, ICompanyRepository, ICacheService, ISchedule, IScheduleType, ICompany, NotFoundError, ScheduleState, BusinessHours, IClient, Forbidden, CancellationOrigin, IScheduleCancellation } from "@domain";
 import { assertCompanyOwner, OBJECT_ID_VALIDATION, SCHEDULE_CONFIRM_VALIDATION, SCHEDULE_FILTER_VALIDATION, SCHEDULE_VALIDATION, SCHEDULE_LOCK_REQUEST_VALIDATION, SCHEDULE_TYPE_REQUEST_VALIDATION, SCHEDULE_TYPE_UPDATE_REQUEST_VALIDATION, ScheduleResponseDto, ScheduleTypeResponseDto, SCHEDULE_CANCEL_VALIDATION } from "@application";
 
 
@@ -69,7 +69,9 @@ export class ScheduleService implements IScheduleService {
 
         this.scheduleIsPassedCurrentTime(newSchedule);
 
-        await this.getCompany(companyId);
+        const company = await this.getCompany(companyId);
+
+        this.assertWithinBusinessHours(company, newSchedule);
 
         const schedule = await this.findSchedule(companyId, newSchedule.startsAt, newSchedule.endsAt);
 
@@ -148,6 +150,8 @@ export class ScheduleService implements IScheduleService {
 
         const company = await this.getCompany(companyId);
 
+        this.assertWithinBusinessHours(company, body);
+
         body.typeDetail = await this.getScheduleType(companyId, body.typeId);
 
         const scheduleCheck = await this.findSchedule(companyId, body.startsAt, body.endsAt);
@@ -167,6 +171,19 @@ export class ScheduleService implements IScheduleService {
         const now = new Date();
         if (value.startsAt < now) {
             throw ScheduleResponseDto.badRequest("Horário selecionado não está disponível");
+        }
+    }
+
+    // Só aceita horários em dias de funcionamento, dentro do expediente e fora do intervalo de almoço
+    private assertWithinBusinessHours(company: ICompany, value: ISchedule) {
+        const businessHours = new BusinessHours(company.configuration);
+
+        if (!businessHours.isOpenOn(value.startsAt)) {
+            throw ScheduleResponseDto.badRequest("A empresa não funciona no dia selecionado");
+        }
+
+        if (!businessHours.accepts(value.startsAt, value.endsAt)) {
+            throw ScheduleResponseDto.badRequest("Horário selecionado está fora do horário de funcionamento");
         }
     }
 
@@ -249,23 +266,19 @@ export class ScheduleService implements IScheduleService {
 
         let mappedSchedules: ISchedule[] = [];
 
-        const startTimeOpening = Horario.parse(company.configuration.openingHours);
+        const businessHours = new BusinessHours(company.configuration);
 
-        const endStartClosing = Horario.parse(company.configuration.closingTime);
+        // Empresa fechada no dia consultado: não há horários disponíveis
+        if (!businessHours.isOpenOn(startFilter)) {
+            return mappedSchedules;
+        }
 
-        const { start, end } = company.configuration.lunchBreak;
+        const { opening, closing } = businessHours.periodsOn(startFilter);
 
-        const horarioStartLunchBreak = Horario.parse(start);
-        const horarioEndLunchBreak = Horario.parse(end);
-
-        let startDate = new Date(startFilter.getFullYear(), startFilter.getMonth(), startFilter.getDate(), startTimeOpening.hours, startTimeOpening.minutes);
-        let endDate = new Date(startFilter.getFullYear(), startFilter.getMonth(), startFilter.getDate(), endStartClosing.hours, endStartClosing.minutes)
-
-        const startLunchBreak = new Date(startFilter.getFullYear(), startFilter.getMonth(), startFilter.getDate(), horarioStartLunchBreak.hours, horarioStartLunchBreak.minutes);
-        const endLunchBreak = new Date(startFilter.getFullYear(), startFilter.getMonth(), startFilter.getDate(), horarioEndLunchBreak.hours, horarioEndLunchBreak.minutes);
+        let startDate = opening;
+        let endDate = closing;
 
         while (startDate < endDate) {
-            const isLunckBreak = startDate >= startLunchBreak && startDate < endLunchBreak;
 
             const isToday = now.getDate() === startDate.getDate();
 
@@ -280,7 +293,8 @@ export class ScheduleService implements IScheduleService {
                     companyId: companyId,
                     client: undefined,
                     typeId: undefined,
-                    state: isLunckBreak ? ScheduleState.closed : ScheduleState.open,
+                    // Intervalos que cruzam o almoço ou ultrapassam o fechamento não são ofertados
+                    state: businessHours.accepts(startDate, stDate) ? ScheduleState.open : ScheduleState.closed,
                 });
             }
             startDate = new Date(stDate);

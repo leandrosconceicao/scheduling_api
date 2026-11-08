@@ -1,7 +1,7 @@
 import { injectable, registry, delay, inject } from "tsyringe";
 import { Request } from "express";
-import { ICompanyService, ICompanyRepository, IScheduleRepository, ICompany, NotFoundError, ICloudService } from "@domain";
-import { assertCompanyOwner, COMPANY_REQUEST_VALIDATION, COMPANY_UPDATE_REQUEST_VALIDATION, CompanyResponseDto, OBJECT_ID_VALIDATION, STRING_VALIDATION } from "@application";
+import { ICompanyService, ICompanyRepository, IScheduleRepository, ICompany, IAddress, NotFoundError, ICloudService } from "@domain";
+import { assertCompanyOwner, assertValidCompanyConfiguration, COMPANY_REQUEST_VALIDATION, COMPANY_UPDATE_REQUEST_VALIDATION, CompanyResponseDto, OBJECT_ID_VALIDATION, STRING_VALIDATION } from "@application";
 
 @injectable()
 @registry([
@@ -53,11 +53,19 @@ export class CompanyService implements ICompanyService {
 
         if (body.cnpj) company.cnpj = body.cnpj;
         if (body.name) company.name = body.name;
-        if (body.address) company.address = body.address;
-        if (body.configuration?.openingHours) company.configuration.openingHours = body.configuration.openingHours;
-        if (body.configuration?.closingTime) company.configuration.closingTime = body.configuration.closingTime;
-        if (body.configuration?.defaultPeriodInMinutes) company.configuration.defaultPeriodInMinutes = body.configuration.defaultPeriodInMinutes;
-        if (body.configuration?.lunchBreak) company.configuration.lunchBreak = body.configuration.lunchBreak;
+        if (body.configuration) {
+            const { configuration } = body;
+
+            if (configuration.openingHours) company.configuration.openingHours = configuration.openingHours;
+            if (configuration.closingTime) company.configuration.closingTime = configuration.closingTime;
+            if (configuration.defaultPeriodInMinutes) company.configuration.defaultPeriodInMinutes = configuration.defaultPeriodInMinutes;
+            if (configuration.lunchBreak) company.configuration.lunchBreak = configuration.lunchBreak;
+            if (configuration.lockSchedulePeriodInMinutes) company.configuration.lockSchedulePeriodInMinutes = configuration.lockSchedulePeriodInMinutes;
+            if (configuration.workingDays) company.configuration.workingDays = configuration.workingDays;
+
+            // A coerência só pode ser verificada depois de mesclar o que foi enviado com o que já estava salvo
+            assertValidCompanyConfiguration(company.configuration);
+        }
         if (body.geoLocation) company.geoLocation = {
             type: "Point",
             coordinates: body.geoLocation.coordinates
@@ -65,21 +73,25 @@ export class CompanyService implements ICompanyService {
 
         if (body.logoUrl) company.logoUrl = body.logoUrl;
         
-        if (body.address?.city) company.address.city = body.address.city;
-        if (body.address?.cityCode) company.address.cityCode = body.address.cityCode;        
-        if (body.address?.zipCode) company.address.zipCode = body.address.zipCode;
-        if (body.address?.street) company.address.street = body.address.street;
-        if (body.address?.number) company.address.number = body.address.number;
-        if (body.address?.complement) company.address.complement = body.address.complement;
-        if (body.address?.neighborhood) company.address.neighborhood = body.address.neighborhood;
-        if (body.address?.state) company.address.state = body.address.state;
-        if (body.address?.countryCode) company.address.countryCode = body.address.countryCode;
+        // Atualiza cada campo enviado, preservando os demais; "" limpa o campo
+        if (body.address) {
+            company.address ??= {};
+
+            for (const [field, value] of Object.entries(body.address)) {
+                if (value !== undefined) company.address[field as keyof IAddress] = value;
+            }
+        }
         
-        if (body.social?.email && company.social?.email) company.social.email = body.social.email;
-        if (body.social?.phone && company.social?.phone) company.social.phone = body.social.phone;
-        if (body.social?.facebook && company.social?.facebook) company.social.facebook = body.social.facebook;
-        if (body.social?.whatsapp && company.social?.whatsapp) company.social.whatsapp = body.social.whatsapp;
-        if (body.social?.instagram && company.social?.instagram) company.social.instagram = body.social.instagram;
+        // Atualiza cada rede enviada, mesmo que ainda não houvesse valor salvo; "" limpa o campo
+        if (body.social) {
+            company.social ??= {};
+
+            if (body.social.email !== undefined) company.social.email = body.social.email;
+            if (body.social.phone !== undefined) company.social.phone = body.social.phone;
+            if (body.social.facebook !== undefined) company.social.facebook = body.social.facebook;
+            if (body.social.whatsapp !== undefined) company.social.whatsapp = body.social.whatsapp;
+            if (body.social.instagram !== undefined) company.social.instagram = body.social.instagram;
+        }
 
         const updatedCompany = await this.repository.updateCompany(id, company);
 

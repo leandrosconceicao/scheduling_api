@@ -483,4 +483,118 @@ describe("Agendamentos", () => {
             expect((await ScheduleModel.findById(id))?.deleted).not.toBe(true);
         });
     });
+    describe("Dias e horário de funcionamento", () => {
+        const tomorrow = () => { const d = new Date(); d.setDate(d.getDate() + 1); return d.getDay(); };
+
+        const configure = (configuration: Record<string, unknown>) =>
+            api().patch(`/company/${s.companyId}`).set(bearer(s.owner.token)).send({
+                configuration: {
+                    defaultPeriodInMinutes: 30, openingHours: "08:00", closingTime: "18:00",
+                    lunchBreak: { start: "12:00", end: "13:00" }, ...configuration,
+                },
+            });
+
+        /** Fecha a empresa no dia de amanhã, mantendo os demais dias abertos. */
+        const closeTomorrow = () => configure({ workingDays: [0, 1, 2, 3, 4, 5, 6].filter((d) => d !== tomorrow()) });
+
+        it("a grade de um dia em que a empresa está fechada vem vazia", async () => {
+            expect((await closeTomorrow()).status).toBe(200);
+
+            const date = localDate(1);
+            const res = await api().get(`/schedules/${s.companyId}`).query({ startsAt: date, endsAt: date }).set(bearer(ana.token));
+
+            expect(res.status).toBe(200);
+            expect(res.body.dados).toEqual([]);
+        });
+
+        it("a grade continua disponível nos dias de funcionamento", async () => {
+            await configure({ workingDays: [tomorrow()] });
+
+            const date = localDate(1);
+            const res = await api().get(`/schedules/${s.companyId}`).query({ startsAt: date, endsAt: date }).set(bearer(ana.token));
+
+            expect(res.body.dados).toHaveLength(18);
+        });
+
+        it("não permite reservar nem confirmar em dia fechado (400)", async () => {
+            await closeTomorrow();
+
+            const locked = await lock(ana, slot(10));
+            const confirmed = await confirm(ana, slot(10));
+
+            expect(locked.status).toBe(400);
+            expect(locked.body.message).toMatch(/não funciona no dia/);
+            expect(confirmed.status).toBe(400);
+            expect(fakeCache.store.size).toBe(0);
+            expect(await ScheduleModel.countDocuments()).toBe(0);
+        });
+
+        it.each([
+            ["antes da abertura", slot(7, 30)],
+            ["após o fechamento", slot(18)],
+            ["ultrapassando o fechamento", slot(17, 45)],
+            ["durante o almoço", slot(12)],
+            ["cruzando o início do almoço", slot(11, 45)],
+        ])("não permite reservar %s (400)", async (_, when) => {
+            const res = await lock(ana, when);
+
+            expect(res.status).toBe(400);
+            expect(res.body.message).toMatch(/fora do horário de funcionamento/);
+        });
+
+        it("não permite confirmar fora do horário de funcionamento (400)", async () => {
+            const res = await confirm(ana, slot(19));
+
+            expect(res.status).toBe(400);
+            expect(await ScheduleModel.countDocuments()).toBe(0);
+        });
+
+        it("usa o horário próprio do dia (meio período, sem almoço)", async () => {
+            await configure({ workingDays: [{ day: tomorrow(), openingHours: "08:00", closingTime: "12:00", lunchBreak: null }] });
+
+            const date = localDate(1);
+            const res = await api().get(`/schedules/${s.companyId}`).query({ startsAt: date, endsAt: date }).set(bearer(ana.token));
+
+            const hours = res.body.dados.map((e: any) => new Date(e.startsAt)).map((d: Date) => d.getHours() + d.getMinutes() / 60);
+            expect(hours).toEqual([8, 8.5, 9, 9.5, 10, 10.5, 11, 11.5]);
+
+            expect((await lock(ana, slot(11, 30))).status).toBe(200);
+            const afternoon = await lock(bruno, slot(14));
+            expect(afternoon.status).toBe(400);
+            expect(afternoon.body.message).toMatch(/fora do horário de funcionamento/);
+        });
+
+        it("dia sem almoço permite reservar no horário do almoço padrão", async () => {
+            await configure({ workingDays: [{ day: tomorrow(), lunchBreak: null }] });
+
+            const date = localDate(1);
+            const res = await api().get(`/schedules/${s.companyId}`).query({ startsAt: date, endsAt: date }).set(bearer(ana.token));
+
+            // 08:00–18:00 sem intervalo = 20 blocos
+            expect(res.body.dados).toHaveLength(20);
+            expect((await lock(ana, slot(12))).status).toBe(200);
+        });
+
+        it("almoço próprio do dia substitui o padrão", async () => {
+            await configure({ workingDays: [{ day: tomorrow(), lunchBreak: { start: "14:00", end: "15:00" } }] });
+
+            expect((await lock(ana, slot(12))).status).toBe(200);
+            expect((await lock(bruno, slot(14))).status).toBe(400);
+        });
+
+        it("a grade não oferta blocos que cruzam o almoço ou o fechamento", async () => {
+            // Blocos de 45 min a partir das 08:00: 11:00–11:45 é o último antes do almoço; 17:00–17:45 o último do dia
+            await configure({ defaultPeriodInMinutes: 45 });
+
+            const date = localDate(1);
+            const res = await api().get(`/schedules/${s.companyId}`).query({ startsAt: date, endsAt: date }).set(bearer(ana.token));
+
+            for (const item of res.body.dados) {
+                expect((await lock(client(`c-${item.startsAt}`), { startsAt: item.startsAt, endsAt: item.endsAt })).status).toBe(200);
+            }
+            const times = res.body.dados.map((e: any) => new Date(e.startsAt)).map((d: Date) => `${d.getHours()}:${d.getMinutes()}`);
+            expect(times).not.toContain("11:45");
+            expect(times).not.toContain("17:45");
+        });
+    });
 });

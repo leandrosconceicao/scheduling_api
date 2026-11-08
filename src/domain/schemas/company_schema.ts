@@ -1,4 +1,4 @@
-import { ICompany } from "@domain";
+import { ALL_WEEK_DAYS, ICompany } from "@domain";
 import mongoose from "mongoose";
 
 const scheduleTimeSchema = {
@@ -9,6 +9,19 @@ const scheduleTimeSchema = {
         message: (props: any) => `${props.value} é invalido`
     }
 };
+
+const lunchBreakSchema = new mongoose.Schema({
+    start: { ...scheduleTimeSchema, required: true },
+    end: { ...scheduleTimeSchema, required: true },
+}, { _id: false });
+
+const workingDaySchema = new mongoose.Schema({
+    day: { type: Number, required: true, min: 0, max: 6 },
+    openingHours: { ...scheduleTimeSchema, default: undefined },
+    closingTime: { ...scheduleTimeSchema, default: undefined },
+    // null = sem almoço no dia; ausente = herda o almoço padrão
+    lunchBreak: { type: lunchBreakSchema, default: undefined },
+}, { _id: false });
 
 const companySchema = new mongoose.Schema<ICompany>({
     cnpj: { type: String, required: [true, "Cnpj é obrigatório"], minlength: 14, maxLength: 14 },
@@ -33,7 +46,12 @@ const companySchema = new mongoose.Schema<ICompany>({
             start: scheduleTimeSchema,
             end: scheduleTimeSchema
         },
-        lockSchedulePeriodInMinutes: {type: Number, default: 10}
+        lockSchedulePeriodInMinutes: {type: Number, default: 10},
+        // 0 = domingo ... 6 = sábado (padrão de Date.getDay()); horários omitidos herdam o padrão acima
+        workingDays: {
+            type: [workingDaySchema],
+            default: () => ALL_WEEK_DAYS.map((day) => ({ day })),
+        }
     },
     social: {
         instagram: { type: String, default: "" },
