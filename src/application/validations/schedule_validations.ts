@@ -22,7 +22,9 @@ export const SCHEDULE_CONFIRM_VALIDATION = z.intersection(
     z.object({
         typeId: OBJECT_ID_VALIDATION,
         employeeId: OBJECT_ID_VALIDATION,
-        phoneNumber: STRING_VALIDATION,
+        client: z.object({
+            phoneNumber: STRING_VALIDATION,
+        })
     }))
 
 export const SCHEDULE_REQUEST_VALIDATION = z.object({

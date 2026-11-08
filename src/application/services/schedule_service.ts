@@ -54,7 +54,7 @@ export class ScheduleService implements IScheduleService {
 
         const newSchedule = SCHEDULE_CONFIRM_VALIDATION
             .transform((value) => {
-                client.phoneNumber = value.phoneNumber;
+                client.phoneNumber = value.client.phoneNumber;
                 return {                    
                     companyId: companyId,
                     startsAt: new Date(value.startsAt),
