@@ -30,6 +30,7 @@ export async function validateToken(req: Request, res: Response, next: NextFunct
         }
         
         if (isInstanceOfFirebaseAuth && (e.code === "auth/id-token-revoked" || e.code === "auth/argument-error")) {
+            console.warn("Falha na verificação do token Firebase", { code: e.code, message: e.message });
             next(new Forbidden("Acesso não permitido"));
             return;
         }

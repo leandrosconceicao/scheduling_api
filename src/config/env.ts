@@ -8,6 +8,8 @@ const ENV_VALIDATION = z.object({
     DB_URL: z.string().min(1),
     // Ausente: usa a conta de serviço do ambiente (App Engine) via Application Default Credentials
     FIREBASE_CREDENTIALS_PATH: z.string().optional(),
+    // ID do projeto Firebase que emite os tokens (obrigatório se for diferente do projeto GCP onde a API roda)
+    FIREBASE_PROJECT_ID: z.string().optional(),
     FIREBASESTORAGE: z.string().optional(),
     FIREBASEDB: z.string().optional(),
     CACHE_USERNAME: z.string().optional(),

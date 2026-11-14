@@ -17,6 +17,7 @@ cache.on("error", (_) => console.warn("Houve um problema para conectar ao redis"
 
 initializeApp({
     credential: env.FIREBASE_CREDENTIALS_PATH ? cert(env.FIREBASE_CREDENTIALS_PATH) : applicationDefault(),
+    projectId: env.FIREBASE_PROJECT_ID,
     storageBucket: env.FIREBASESTORAGE,
     databaseURL: env.FIREBASEDB
 });
