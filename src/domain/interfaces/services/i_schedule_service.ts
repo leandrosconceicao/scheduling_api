@@ -6,6 +6,9 @@ export interface IScheduleService {
     deleteLockSchedule(req: Request): Promise<ScheduleResponseDto>;
     getSchedules(request: Request): Promise<ScheduleResponseDto>;
     getCompanySchedules(request: Request): Promise<ScheduleResponseDto>;
+    getCompanyAppointments(request: Request): Promise<ScheduleResponseDto>;
+    getCompanyAppointmentById(request: Request): Promise<ScheduleResponseDto>;
+    updateAppointmentState(request: Request): Promise<ScheduleResponseDto>;
     getScheduleById(request: Request): Promise<ScheduleResponseDto>;
     getClientSchedules(request: Request): Promise<ScheduleResponseDto>;
     cancelSchedule(request: Request): Promise<ScheduleResponseDto>;

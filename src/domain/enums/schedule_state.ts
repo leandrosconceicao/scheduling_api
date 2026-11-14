@@ -3,4 +3,6 @@ export enum ScheduleState {
     closed = "closed", 
     scheduled = "scheduled",
     lock = "lock",
+    completed = "completed",
+    canceled = "canceled",
 }

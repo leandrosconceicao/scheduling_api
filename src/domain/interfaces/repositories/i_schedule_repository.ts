@@ -12,7 +12,25 @@ export interface IClientScheduleFilter {
 
 
 
+export interface ICompanyScheduleFilter {
+    companyId: string,
+    // Intervalo aplicado ao início do agendamento (startsAt)
+    from?: Date,
+    to?: Date,
+    employeeId?: string,
+    typeId?: string,
+    states?: string[],
+    // Nome ou telefone do cliente
+    search?: string,
+    order: "asc" | "desc",
+    page: number,
+    limit: number,
+}
+
 export interface IScheduleRepository {
+    getCompanyAppointments(filter: ICompanyScheduleFilter) : Promise<ISchedule[]>;
+    completeSchedule(companyId: string, id: string) : Promise<ISchedule | null>;
+    getAppointmentById(companyId: string, id: string) : Promise<ISchedule | null>;
     addNewSchedule(schedule: ISchedule) : Promise<ISchedule | null>;
     getSchedules(companyId: string, startsAt?: string, endsAt?: string) : Promise<ISchedule[]>;
     getSchedule(companyId: string, startsAt: Date, endsAt: Date) : Promise<ISchedule | null>;

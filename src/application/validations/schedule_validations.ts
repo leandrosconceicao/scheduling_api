@@ -1,4 +1,5 @@
 import z from "zod";
+import { ScheduleState } from "@domain";
 import { NUMBER_VALIDATION, OBJECT_ID_VALIDATION, STRING_VALIDATION } from "./default_validations";
 
 export const SCHEDULE_VALIDATION = z.object({
@@ -65,4 +66,29 @@ export const SCHEDULE_CANCEL_VALIDATION = z.object({
     }).max(500, {
         error: "Tamanho máximo de 500 caracteres excedido"
     })
+})
+
+
+const CSV_STATES = z.string().transform((value) => value.split(",").map((e) => e.trim()).filter(Boolean))
+    .pipe(z.array(z.enum([ScheduleState.scheduled, ScheduleState.completed, ScheduleState.canceled], {
+        error: "Estado inválido (scheduled, completed ou canceled)"
+    })).min(1));
+
+// Listagem de agendamentos do estabelecimento. from/to são instantes (ISO com offset) aplicados ao início do agendamento
+export const COMPANY_APPOINTMENT_FILTER_VALIDATION = z.object({
+    from: z.iso.datetime({ offset: true }).optional(),
+    to: z.iso.datetime({ offset: true }).optional(),
+    employeeId: OBJECT_ID_VALIDATION.optional(),
+    typeId: OBJECT_ID_VALIDATION.optional(),
+    // Lista separada por vírgula. Ausente: agendados e concluídos
+    state: CSV_STATES.optional(),
+    search: z.string().trim().min(1).max(100).optional(),
+    order: z.enum(["asc", "desc"], { error: "Ordem inválida (asc ou desc)" }).default("asc"),
+    page: z.coerce.number().int().min(1, { error: "Página deve ser maior ou igual a 1" }).default(1),
+    limit: z.coerce.number().int().min(1, { error: "Limite deve ser entre 1 e 100" }).max(100, { error: "Limite deve ser entre 1 e 100" }).default(20),
+}).refine((v) => !v.from || !v.to || v.from <= v.to, { error: "from deve ser anterior a to" })
+
+export const SCHEDULE_STATE_UPDATE_VALIDATION = z.object({
+    // O cancelamento tem rota própria (exige motivo)
+    state: z.enum([ScheduleState.completed], { error: "Estado inválido (completed)" })
 })

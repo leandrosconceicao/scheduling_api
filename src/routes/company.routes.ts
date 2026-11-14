@@ -41,6 +41,13 @@ companyRouter.route("/company/update_logo/:companyId")
 companyRouter.route("/company/:companyId/schedules")
     .get(validateOwnerToken, scheduleCtrl.getCompanySchedules);
 
+companyRouter.route("/company/:companyId/appointments")
+    .get(validateOwnerToken, scheduleCtrl.getCompanyAppointments);
+
+companyRouter.route("/company/:companyId/appointments/:id")
+    .get(validateOwnerToken, scheduleCtrl.getCompanyAppointmentById)
+    .patch(validateOwnerToken, scheduleCtrl.updateAppointmentState);
+
 companyRouter.route("/company/:companyId/schedules/:id")
     .delete(validateOwnerToken, scheduleCtrl.cancelScheduleByCompany);
 

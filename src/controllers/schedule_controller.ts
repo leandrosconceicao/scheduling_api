@@ -31,6 +31,36 @@ export class ScheduleController {
         }
     }
 
+    getCompanyAppointments = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const result = await this.service.getCompanyAppointments(req);
+
+            return res.status(result.statusCode).json(result);
+        } catch (e) {
+            next(e);
+        }
+    }
+
+    getCompanyAppointmentById = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const result = await this.service.getCompanyAppointmentById(req);
+
+            return res.status(result.statusCode).json(result);
+        } catch (e) {
+            next(e);
+        }
+    }
+
+    updateAppointmentState = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const result = await this.service.updateAppointmentState(req);
+
+            return res.status(result.statusCode).json(result);
+        } catch (e) {
+            next(e);
+        }
+    }
+
     createSchedule = async (req: Request, _: Response, next: NextFunction) => {
         try {
             const result = await this.service.confirmSchedule(req);

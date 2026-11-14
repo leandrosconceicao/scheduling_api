@@ -16,6 +16,7 @@ const ENV_VALIDATION = z.object({
     CACHE_PORT: z.string().optional(),
     ENVIROMENT: z.string().optional(),
     PORT: z.string().default("80"),
+    CACHE_URL: z.string().optional()
 });
 
 const parsed = ENV_VALIDATION.safeParse(process.env);

@@ -1,6 +1,6 @@
 import { injectable, registry, delay } from "tsyringe";
 import mongoose from "mongoose";
-import { IScheduleRepository, IClientScheduleFilter, ISchedule, ScheduleModel, IScheduleType, ScheduleTypeModel, IScheduleCancellation } from "@domain";
+import { ICompanyScheduleFilter, ScheduleState, IScheduleRepository, IClientScheduleFilter, ISchedule, ScheduleModel, IScheduleType, ScheduleTypeModel, IScheduleCancellation } from "@domain";
 
 var ObjectId = mongoose.Types.ObjectId;
 
@@ -13,6 +13,84 @@ var ObjectId = mongoose.Types.ObjectId;
 ])
 export class ScheduleRepository implements IScheduleRepository {
     
+    private static readonly appointmentPopulate = [
+        { path: "typeDetail" },
+        { path: "employeeDetail", select: "name profilePhotoUrl" },
+    ];
+
+    async getCompanyAppointments(filter: ICompanyScheduleFilter): Promise<ISchedule[]> {
+        const query: Record<string, any> = { companyId: new ObjectId(filter.companyId) };
+
+        if (filter.from || filter.to) {
+            query.startsAt = {
+                ...(filter.from && { $gte: filter.from }),
+                ...(filter.to && { $lte: filter.to }),
+            };
+        }
+
+        if (filter.employeeId) query.employeeId = new ObjectId(filter.employeeId);
+        if (filter.typeId) query.typeId = new ObjectId(filter.typeId);
+
+        if (filter.search) {
+            const pattern = new RegExp(filter.search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+            query.$or = [{ "client.name": pattern }, { "client.phoneNumber": pattern }];
+        }
+
+        // Cancelados são os registros com deleted=true (inclui os anteriores ao estado "canceled")
+        const states = filter.states ?? [ScheduleState.scheduled, ScheduleState.completed];
+        const live = states.filter((e) => e !== ScheduleState.canceled);
+        const stateConditions: Record<string, any>[] = [];
+
+        if (live.length) stateConditions.push({ deleted: null, state: { $in: live } });
+        if (states.includes(ScheduleState.canceled)) stateConditions.push({ deleted: true });
+
+        query.$and = [{ $or: stateConditions }];
+
+        const sort = filter.order === "asc" ? 1 : -1;
+
+        const items = await ScheduleModel.find(query)
+            .sort({ startsAt: sort, _id: sort })
+            .skip((filter.page - 1) * filter.limit)
+            .limit(filter.limit)
+            .populate(ScheduleRepository.appointmentPopulate);
+
+        return items.map(ScheduleRepository.normalizeCanceled);
+    }
+
+    async getAppointmentById(companyId: string, id: string): Promise<ISchedule | null> {
+        const item = await ScheduleModel.findOne({
+            companyId: new ObjectId(companyId),
+            _id: new ObjectId(id),
+        }).populate(ScheduleRepository.appointmentPopulate);
+
+        return item ? ScheduleRepository.normalizeCanceled(item) : null;
+    }
+
+    // Só conclui o que ainda está agendado (atômico: evita concluir um agendamento cancelado em paralelo)
+    async completeSchedule(companyId: string, id: string): Promise<ISchedule | null> {
+        const item = await ScheduleModel.findOneAndUpdate({
+            companyId: new ObjectId(companyId),
+            _id: new ObjectId(id),
+            deleted: null,
+            state: ScheduleState.scheduled,
+        }, { $set: { state: ScheduleState.completed } }, { returnDocument: "after" })
+            .populate(ScheduleRepository.appointmentPopulate);
+
+        return item ? ScheduleRepository.normalizeCanceled(item) : null;
+    }
+
+    // Registros cancelados antes do estado "canceled" existir ainda estão como "scheduled"
+    private static normalizeCanceled(item: any): ISchedule {
+        const obj = item.toObject({ virtuals: true });
+
+        if (obj.deleted) {
+            obj.state = ScheduleState.canceled;
+            obj.stateDescription = "Cancelado";
+        }
+
+        return obj;
+    }
+
     getClientSchedules(filter: IClientScheduleFilter): Promise<ISchedule[]> {
         const now = new Date();
 
@@ -116,6 +194,7 @@ export class ScheduleRepository implements IScheduleRepository {
             {
                 $set: {
                     deleted: true,
+                    state: ScheduleState.canceled,
                     cancellation: cancellation
                 }
             }

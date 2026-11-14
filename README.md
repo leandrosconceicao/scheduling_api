@@ -303,6 +303,9 @@ Reservas (`/lock_schedule`) e confirmações (`/schedules`) só são aceitas se 
 | GET | `/schedules/:companyId/me?period=upcoming&includeCanceled=false&page=1&limit=20` | 🔥 | Agendamentos confirmados do cliente autenticado na empresa, com serviço (`typeDetail`) e funcionário (`employeeDetail`). Veja os filtros abaixo |
 | GET | `/schedules/:companyId/:id` | 🔥 | Detalhes de um agendamento (somente o cliente que agendou) |
 | DELETE | `/schedules/:companyId/:id` | 🔥 | Cancela um agendamento (somente o cliente que agendou) |
+| GET | `/company/:companyId/appointments?from&to&employeeId&typeId&state&search&order&page&limit` | 🔑 🏢 | Agendamentos reais do estabelecimento (a rota `/schedules` acima é a grade de horários). `from`/`to`: ISO com offset, aplicados ao início. `state`: lista separada por vírgula de `scheduled`, `completed`, `canceled` (padrão: `scheduled,completed`). `search`: nome ou telefone do cliente. `order`: `asc` (padrão) ou `desc`. Traz serviço (com preço) e funcionário |
+| GET | `/company/:companyId/appointments/:id` | 🔑 🏢 | Detalhe do agendamento, inclusive cancelado |
+| PATCH | `/company/:companyId/appointments/:id` | 🔑 🏢 | Conclui o atendimento. Body: `{ "state": "completed" }`. Só para agendamentos em `scheduled` que já começaram. O cancelamento usa o `DELETE` abaixo |
 | DELETE | `/company/:companyId/schedules/:id` | 🔑 🏢 | Cancelamento pelo estabelecimento. Body: `{ reason }` (obrigatório, até 500 caracteres) |
 
 Filtros de `GET /schedules/me` e `GET /schedules/:companyId/me` (todos opcionais):

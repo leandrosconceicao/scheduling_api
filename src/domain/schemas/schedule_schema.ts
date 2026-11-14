@@ -105,6 +105,10 @@ scheduleSchema.virtual("stateDescription").get(function() {
             return "Bloqueado";
         case ScheduleState.scheduled:
             return "Reservado";
+        case ScheduleState.completed:
+            return "Concluído";
+        case ScheduleState.canceled:
+            return "Cancelado";
         default:
             return "Aberto"
     }

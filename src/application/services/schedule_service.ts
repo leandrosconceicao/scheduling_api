@@ -4,7 +4,7 @@ import { delay, inject, injectable, registry } from "tsyringe";
 import { Types } from "mongoose";
 
 import { IScheduleService, IScheduleRepository, ICompanyRepository, ICacheService, ISchedule, IScheduleType, ICompany, NotFoundError, ScheduleState, BusinessHours, IClient, Forbidden, CancellationOrigin, IScheduleCancellation } from "@domain";
-import { assertCompanyOwner, OBJECT_ID_VALIDATION, SCHEDULE_CONFIRM_VALIDATION, SCHEDULE_FILTER_VALIDATION, SCHEDULE_VALIDATION, SCHEDULE_LOCK_REQUEST_VALIDATION, SCHEDULE_TYPE_REQUEST_VALIDATION, SCHEDULE_TYPE_UPDATE_REQUEST_VALIDATION, ScheduleResponseDto, ScheduleTypeResponseDto, SCHEDULE_CANCEL_VALIDATION, CLIENT_SCHEDULE_FILTER_VALIDATION } from "@application";
+import { assertCompanyOwner, OBJECT_ID_VALIDATION, SCHEDULE_CONFIRM_VALIDATION, SCHEDULE_FILTER_VALIDATION, SCHEDULE_VALIDATION, SCHEDULE_LOCK_REQUEST_VALIDATION, SCHEDULE_TYPE_REQUEST_VALIDATION, SCHEDULE_TYPE_UPDATE_REQUEST_VALIDATION, ScheduleResponseDto, ScheduleTypeResponseDto, SCHEDULE_CANCEL_VALIDATION, CLIENT_SCHEDULE_FILTER_VALIDATION, COMPANY_APPOINTMENT_FILTER_VALIDATION, SCHEDULE_STATE_UPDATE_VALIDATION } from "@application";
 
 
 @injectable()
@@ -318,6 +318,69 @@ export class ScheduleService implements IScheduleService {
 
         return mappedSchedules.filter((e) => e.state !== ScheduleState.closed);
     }
+    // Agendamentos reais do estabelecimento (a grade de horários está em getCompanySchedules)
+    getCompanyAppointments = async (request: Request): Promise<ScheduleResponseDto> => {
+        const companyId = OBJECT_ID_VALIDATION.parse(request.params.companyId);
+
+        assertCompanyOwner(request, await this.getCompany(companyId));
+
+        const { from, to, state, ...filters } = COMPANY_APPOINTMENT_FILTER_VALIDATION.parse(request.query);
+
+        const appointments = await this.repository.getCompanyAppointments({
+            companyId,
+            from: from ? new Date(from) : undefined,
+            to: to ? new Date(to) : undefined,
+            states: state,
+            ...filters,
+        });
+
+        return new ScheduleResponseDto(appointments);
+    }
+
+    getCompanyAppointmentById = async (request: Request): Promise<ScheduleResponseDto> => {
+        const { companyId, id } = this.getIds(request);
+
+        assertCompanyOwner(request, await this.getCompany(companyId));
+
+        const appointment = await this.repository.getAppointmentById(companyId, id);
+
+        if (!appointment) throw new NotFoundError("Agendamento não localizado");
+
+        return new ScheduleResponseDto(appointment);
+    }
+
+    // Conclui o atendimento. O cancelamento tem rota própria (exige motivo)
+    updateAppointmentState = async (request: Request): Promise<ScheduleResponseDto> => {
+        const { companyId, id } = this.getIds(request);
+
+        SCHEDULE_STATE_UPDATE_VALIDATION.parse(request.body);
+
+        assertCompanyOwner(request, await this.getCompany(companyId));
+
+        const appointment = await this.repository.getAppointmentById(companyId, id);
+
+        if (!appointment) throw new NotFoundError("Agendamento não localizado");
+
+        if (appointment.state !== ScheduleState.scheduled) {
+            throw ScheduleResponseDto.badRequest("Apenas agendamentos em aberto podem ser concluídos");
+        }
+
+        if (appointment.startsAt > new Date()) {
+            throw ScheduleResponseDto.badRequest("Não é possível concluir um agendamento que ainda não começou");
+        }
+
+        const completed = await this.repository.completeSchedule(companyId, id);
+
+        // Cancelado ou concluído por outra requisição entre a leitura e a escrita
+        if (!completed) {
+            throw ScheduleResponseDto.badRequest("Apenas agendamentos em aberto podem ser concluídos");
+        }
+
+        await this.cacheService.removeData(this.scheduleByIdCacheKey(companyId, id));
+
+        return new ScheduleResponseDto(completed);
+    }
+
     // Agendamentos confirmados do cliente autenticado (reservas temporárias ficam só no cache).
     // Com :companyId, restringe à empresa; sem ele, traz os de todas as empresas.
     getClientSchedules = async (request: Request): Promise<ScheduleResponseDto> => {
