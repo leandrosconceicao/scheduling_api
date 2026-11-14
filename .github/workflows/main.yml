@@ -11,6 +11,7 @@ permissions:
 
 env:
   APP_ENGINE_SERVICE: scheduling-api
+  VERSIONS_TO_KEEP: 2
 
 jobs:
   test:
@@ -58,5 +59,18 @@ jobs:
 
       - name: Deploy to App Engine
         run: |
-          gcloud app deploy app.yaml --quiet --no-promote \
+          gcloud app deploy app.yaml --quiet --promote \
             --version="sha-${GITHUB_SHA::8}"
+
+      # Mantém as N versões mais recentes. Restrito ao serviço próprio para
+      # nunca atingir versões do "default". O App Engine não apaga a versão
+      # que está recebendo tráfego.
+      - name: Remove old versions
+        run: |
+          gcloud app versions list \
+            --service="${APP_ENGINE_SERVICE}" \
+            --sort-by=~version.createTime \
+            --format="value(version.id)" \
+            | tail -n +$((VERSIONS_TO_KEEP + 1)) \
+            | xargs -r gcloud app versions delete \
+                --service="${APP_ENGINE_SERVICE}" --quiet
