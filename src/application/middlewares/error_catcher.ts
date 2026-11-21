@@ -3,7 +3,7 @@ import {z} from "zod";
 import Jwt from "jsonwebtoken";
 import { MulterError } from "multer";
 import { ApiResponse } from "@application";
-import { DuplicatedData } from "@domain";
+import { DuplicatedData, TooManyRequests } from "@domain";
 
 export function errorCatcher(err: Error, req: express.Request, res: express.Response, _: NextFunction) {
     
@@ -25,6 +25,10 @@ export function errorCatcher(err: Error, req: express.Request, res: express.Resp
 
     if (err instanceof Jwt.JsonWebTokenError) {
         return res.status(401).send(ApiResponse.unauthorized())
+    }
+
+    if (err instanceof TooManyRequests) {
+        res.set("Retry-After", String(err.retryAfterSeconds));
     }
 
     if (err instanceof ApiResponse) {

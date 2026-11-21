@@ -1,6 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import Jwt from "jsonwebtoken";
 import { OwnerModel } from "@domain";
+import { fakeCache } from "../support/fakes";
 import { ADMIN, api, bearer, createOwner, createOwnerWithToken, initDatabase, login, resetState, seedAdmin } from "../support/helpers";
 
 describe("Owners", () => {
@@ -47,6 +48,86 @@ describe("Owners", () => {
         it("rejeita JSON malformado com 400", async () => {
             const res = await api().post("/owner/auth").set("Content-Type", "application/json").send("{invalido");
             expect(res.status).toBe(400);
+        });
+
+        describe("proteção contra brute force", () => {
+            const attempt = (username: string, password: string, ip: string) =>
+                api().post("/owner/auth").set("X-Forwarded-For", ip).send({ username, password });
+
+            const failTimes = async (n: number, ip: string, username = ADMIN.username) => {
+                for (let i = 0; i < n; i++) {
+                    expect((await attempt(username, "errada", ip)).status).toBe(401);
+                }
+            };
+
+            // Simula a expiração do bloqueio no Redis
+            const expireLocks = () => {
+                for (const key of [...fakeCache.store.keys()]) {
+                    if (key.startsWith("login:lock:")) { fakeCache.store.delete(key); fakeCache.ttls.delete(key); }
+                }
+            };
+
+            it("bloqueia após 5 falhas de usuário+IP, mesmo com a senha correta, com Retry-After", async () => {
+                await failTimes(5, "10.0.0.1");
+
+                const res = await attempt(ADMIN.username, ADMIN.password, "10.0.0.1");
+
+                expect(res.status).toBe(429);
+                expect(res.headers["retry-after"]).toBe("60");
+                expect(res.body.dados).toBeFalsy();
+            });
+
+            it("não bloqueia o mesmo usuário vindo de outro IP", async () => {
+                await failTimes(5, "10.0.0.1");
+
+                const res = await attempt(ADMIN.username, ADMIN.password, "10.0.0.2");
+
+                expect(res.status).toBe(200);
+            });
+
+            it("bloqueia o IP após 20 falhas com usuários diferentes", async () => {
+                for (let i = 0; i < 20; i++) await failTimes(1, "10.0.0.3", `ninguem${i}`);
+
+                const res = await attempt(ADMIN.username, ADMIN.password, "10.0.0.3");
+
+                expect(res.status).toBe(429);
+            });
+
+            it("bloqueia o usuário após 50 falhas vindas de IPs distintos", async () => {
+                for (let i = 0; i < 50; i++) await failTimes(1, `10.1.0.${i}`);
+
+                const res = await attempt(ADMIN.username, ADMIN.password, "10.9.9.9");
+
+                expect(res.status).toBe(429);
+            });
+
+            it("aumenta a duração do bloqueio a cada reincidência", async () => {
+                await failTimes(5, "10.0.0.4");
+                expireLocks();
+                await failTimes(5, "10.0.0.4");
+
+                const res = await attempt(ADMIN.username, ADMIN.password, "10.0.0.4");
+
+                expect(res.status).toBe(429);
+                expect(res.headers["retry-after"]).toBe("300");
+            });
+
+            it("zera o contador de usuário+IP no login bem-sucedido", async () => {
+                await failTimes(4, "10.0.0.5");
+                expect((await attempt(ADMIN.username, ADMIN.password, "10.0.0.5")).status).toBe(200);
+
+                await failTimes(4, "10.0.0.5");
+
+                expect((await attempt(ADMIN.username, ADMIN.password, "10.0.0.5")).status).toBe(200);
+            });
+
+            it("conta também tentativas com usuário inexistente", async () => {
+                await failTimes(5, "10.0.0.6", "fantasma");
+
+                const res = await attempt("fantasma", "x", "10.0.0.6");
+
+                expect(res.status).toBe(429);
+            });
         });
     });
 

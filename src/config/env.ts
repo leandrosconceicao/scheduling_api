@@ -18,7 +18,12 @@ const ENV_VALIDATION = z.object({
     CACHE_PORT: z.string().optional(),
     ENVIROMENT: z.string().optional(),
     PORT: z.string().default("80"),
-    CACHE_URL: z.string().optional()
+    CACHE_URL: z.string().optional(),
+    // Proteção contra brute force no login do owner (falhas dentro da janela até o bloqueio)
+    LOGIN_MAX_ATTEMPTS_USER_IP: z.coerce.number().int().positive().default(5),
+    LOGIN_MAX_ATTEMPTS_IP: z.coerce.number().int().positive().default(20),
+    LOGIN_MAX_ATTEMPTS_USER: z.coerce.number().int().positive().default(50),
+    LOGIN_WINDOW_SECONDS: z.coerce.number().int().positive().default(900)
 });
 
 const parsed = ENV_VALIDATION.safeParse(process.env);

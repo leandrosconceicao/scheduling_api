@@ -27,6 +27,26 @@ export class CacheService implements ICacheService {
             return Promise.resolve(null);
         }
     }
+    increment = async (key: string, expirationInSeconds: number): Promise<number> => {
+        try {
+            const value = await cache.incr(key);
+
+            if (value === 1) await cache.expire(key, expirationInSeconds);
+
+            return value;
+        } catch (e) {
+            return 0;
+        }
+    }
+
+    getTtl = async (key: string): Promise<number> => {
+        try {
+            return await cache.ttl(key);
+        } catch (e) {
+            return -2;
+        }
+    }
+
     setCache = async (key: string, value: any, expirationInSeconds: number): Promise<string | null> => {
         try {
             let opts: SetOptions | undefined = {

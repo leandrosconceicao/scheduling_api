@@ -7,6 +7,9 @@ import { router } from '@routes';
 export function createApp() {
     const app = express();
 
+    // App Engine fica atrás de um proxy: sem isso req.ip seria o do proxy (quebra o limite de login por IP)
+    app.set("trust proxy", 1);
+
     app.use(cors());
 
     app.use(

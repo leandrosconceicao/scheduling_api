@@ -1,6 +1,7 @@
 import { injectable, registry, delay, inject } from "tsyringe";
 import { Request } from "express";
 import { Forbidden, IOwner, IOwnerRepository, IOwnerService, NotFoundError, OwnerRole, Password, Unauthorized } from "@domain";
+import { LoginAttemptService } from "./login_attempt_service";
 import { OBJECT_ID_VALIDATION, OWNER_AUTH_VALIDATION, OWNER_CREATE_VALIDATION, OWNER_UPDATE_VALIDATION, OwnerResponseDto, signJwt } from "@application";
 
 @injectable()
@@ -13,7 +14,8 @@ import { OBJECT_ID_VALIDATION, OWNER_AUTH_VALIDATION, OWNER_CREATE_VALIDATION, O
 export class OwnerService implements IOwnerService {
 
     constructor(
-        @inject("IOwnerRepository") private readonly repository: IOwnerRepository
+        @inject("IOwnerRepository") private readonly repository: IOwnerRepository,
+        @inject(LoginAttemptService) private readonly loginAttempts: LoginAttemptService
     ) {}
     
     addNewOwner = async (request: Request): Promise<OwnerResponseDto> => {
@@ -40,13 +42,20 @@ export class OwnerService implements IOwnerService {
     ownerAuthentication = async (request: Request): Promise<OwnerResponseDto> => {
         const body = OWNER_AUTH_VALIDATION.parse(request.body);
 
+        const ip = request.ip ?? "unknown";
+
+        await this.loginAttempts.assertNotLocked(body.username, ip);
+
         const owner = await this.locateOwner({
             username: body.username,
         });
 
         if (!owner || !(await Password.verify(body.password, owner.password))) {
+            await this.loginAttempts.registerFailure(body.username, ip);
             throw new Unauthorized("Usuário ou senha inválidos");
         }
+
+        await this.loginAttempts.reset(body.username, ip);
 
         return OwnerResponseDto.authenticated(owner, signJwt(owner));
     }

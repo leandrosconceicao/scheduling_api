@@ -13,6 +13,13 @@ export const fakeCache = {
         return "OK";
     },
     del: async (key: string) => { ttls.delete(key); return store.delete(key) ? 1 : 0; },
+    incr: async (key: string) => {
+        const next = Number(store.get(key) ?? 0) + 1;
+        store.set(key, String(next));
+        return next;
+    },
+    expire: async (key: string, seconds: number) => { ttls.set(key, seconds); return 1; },
+    ttl: async (key: string) => ttls.get(key) ?? (store.has(key) ? -1 : -2),
 };
 
 // ---- Firebase Auth ----
