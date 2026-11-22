@@ -3,7 +3,7 @@ import { Request } from "express";
 import { delay, inject, injectable, registry } from "tsyringe";
 import { Types } from "mongoose";
 
-import { IScheduleService, IScheduleRepository, ICompanyRepository, ICacheService, ISchedule, IScheduleType, ICompany, NotFoundError, ScheduleState, BusinessHours, IClient, Forbidden, CancellationOrigin, IScheduleCancellation } from "@domain";
+import { IScheduleService, IScheduleRepository, ICompanyRepository, ICacheService, IMessageGateway, ISchedule, IScheduleType, ICompany, NotFoundError, ScheduleState, BusinessHours, IClient, Forbidden, CancellationOrigin, IScheduleCancellation } from "@domain";
 import { assertCompanyOwner, OBJECT_ID_VALIDATION, SCHEDULE_CONFIRM_VALIDATION, SCHEDULE_FILTER_VALIDATION, SCHEDULE_VALIDATION, SCHEDULE_LOCK_REQUEST_VALIDATION, SCHEDULE_TYPE_REQUEST_VALIDATION, SCHEDULE_TYPE_UPDATE_REQUEST_VALIDATION, ScheduleResponseDto, ScheduleTypeResponseDto, SCHEDULE_CANCEL_VALIDATION, CLIENT_SCHEDULE_FILTER_VALIDATION, COMPANY_APPOINTMENT_FILTER_VALIDATION, SCHEDULE_STATE_UPDATE_VALIDATION } from "@application";
 
 
@@ -19,7 +19,8 @@ export class ScheduleService implements IScheduleService {
     constructor(
         @inject("IScheduleRepository") private readonly repository: IScheduleRepository,
         @inject("ICompanyRepository") private readonly companyRepo: ICompanyRepository,
-        @inject("ICacheService") private readonly cacheService: ICacheService
+        @inject("ICacheService") private readonly cacheService: ICacheService,
+        @inject("IMessageGateway") private readonly messageGateway: IMessageGateway
     ) { }
 
     private scheduleCacheKey(companyId: string, startsAt: Date, endsAt: Date) {
@@ -35,6 +36,35 @@ export class ScheduleService implements IScheduleService {
             dateStyle: "short",
             timeStyle: "short",
         }).format(date);
+    }
+
+    // Avisa o cliente pelo WhatsApp sem bloquear a requisição: a API de mensagens só enfileira, e uma falha
+    // aqui nunca pode desfazer ou falhar o agendamento (mesmo padrão de CloudService.sendScheduledEvent)
+    private notifyClient(companyId: string, scheduleId: string, schedule: ISchedule, event: "confirmed" | "canceled") {
+        const phoneNumber = schedule.client?.phoneNumber;
+
+        if (!phoneNumber) return;
+
+        const run = async () => {
+            const company = await this.companyRepo.getCompanyById(companyId);
+
+            if (!company) return;
+
+            const when = this.formatDateToPtBr(new Date(schedule.startsAt));
+
+            const text = event === "confirmed"
+                ? `Olá, ${schedule.client?.name}! Seu agendamento em ${company.name} está confirmado para ${when}.`
+                : `Olá, ${schedule.client?.name}! Seu agendamento em ${company.name} para ${when} foi cancelado.`;
+
+            await this.messageGateway.enqueueWhatsappText(companyId, {
+                to: phoneNumber,
+                text,
+                externalReference: scheduleId,
+                idempotencyKey: `${scheduleId}:${event}`,
+            });
+        };
+
+        run().catch((e) => console.warn("Falha ao enfileirar mensagem do agendamento", { scheduleId, event, error: e?.message }));
     }
 
     private findSchedule = async (companyId: string, startsAt: Date, endsAt: Date): Promise<ISchedule | null> => {
@@ -92,6 +122,8 @@ export class ScheduleService implements IScheduleService {
 
             this.cacheService.removeData(key);
         }
+
+        this.notifyClient(companyId, String(createdSchedule._id), createdSchedule, "confirmed");
 
         return createdSchedule;
     }
@@ -450,6 +482,8 @@ export class ScheduleService implements IScheduleService {
         await this.cacheService.removeData(this.scheduleByIdCacheKey(companyId, id));
 
         schedule.cancellation = cancellation;
+
+        this.notifyClient(companyId, id, schedule, "canceled");
     }
 
     // Agendamentos contêm dados pessoais do cliente: somente quem agendou pode consultá-los ou cancelá-los

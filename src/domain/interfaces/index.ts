@@ -16,5 +16,7 @@ export * from "./services/I_company_service";
 export * from "./services/i_cache_service";
 export * from "./services/i_cloud_service";
 export * from "./services/i_employer_service";
+export * from "./services/i_http_client";
+export * from "./services/i_message_gateway";
 export * from "./services/i_schedule_service";
 export * from "./services/I_owner_service";

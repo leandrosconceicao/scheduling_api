@@ -39,6 +39,15 @@ export class CompanyRepository implements ICompanyRepository {
         });
     }
 
+    async getCompanyApiKey(id: string): Promise<string | null> {
+        const company = await CompanyModel.findOne({
+            _id: new ObjectId(id),
+            deleted: null
+        }).select("+apiKey").lean();
+
+        return company?.apiKey || null;
+    }
+
     updateCompany(id: string, company: Partial<ICompany>): Promise<ICompany | null> {
         return CompanyModel.findByIdAndUpdate(id, company, {
             returnDocument: "after"

@@ -4,3 +4,4 @@ export * from "./forbidden";
 export * from "./not_found";
 export * from "./too_many_requests";
 export * from "./unauthorized";
+export * from "./external_service_error";

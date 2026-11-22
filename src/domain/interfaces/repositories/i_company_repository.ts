@@ -6,5 +6,7 @@ export interface ICompanyRepository {
     getCompanyByDomain(domain: string) : Promise<ICompany | null>
     updateCompany(id: string, company: Partial<ICompany>) : Promise<ICompany | null>
     deleteCompanyById(id: string) : Promise<void>;
+    /** A apiKey não é carregada nas demais consultas (select: false) */
+    getCompanyApiKey(id: string) : Promise<string | null>;
     loadComapanies() : Promise<ICompany[]>;
 }
