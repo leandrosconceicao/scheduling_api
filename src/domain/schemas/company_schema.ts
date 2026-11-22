@@ -76,6 +76,8 @@ const companySchema = new mongoose.Schema<ICompany>({
         ref: "owners",
         required: [true, "Parametro ({VALUE}) é obrigatório"]
     },
+    // select: false evita que a chave seja carregada/exposta por padrão
+    apiKey: { type: String, select: false },
     deleted: { type: Boolean, default: undefined },
     scheduleTypes: [],
     subdomain: {

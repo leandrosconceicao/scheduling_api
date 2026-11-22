@@ -72,6 +72,7 @@ export class CompanyService implements ICompanyService {
         };
 
         if (body.logoUrl) company.logoUrl = body.logoUrl;
+        if (body.apiKey !== undefined) company.apiKey = body.apiKey;
         
         // Atualiza cada campo enviado, preservando os demais; "" limpa o campo
         if (body.address) {

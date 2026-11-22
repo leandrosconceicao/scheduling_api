@@ -14,4 +14,6 @@ export interface ICompany extends IBase {
     scheduleTypes: IScheduleType[],
     subdomain: string,
     ownerId: any,
+    // Chave de acesso à API de envio de mensagens (nunca é retornada nas respostas da API)
+    apiKey?: string,
 }

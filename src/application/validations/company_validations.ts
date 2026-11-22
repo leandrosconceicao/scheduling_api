@@ -36,6 +36,7 @@ export const COMPANY_REQUEST_VALIDATION = z.object({
     }),
     social: SOCICAL_VALIDATION.optional(),
     subdomain: STRING_VALIDATION,
+    apiKey: STRING_VALIDATION.optional(),
     ownerId: OBJECT_ID_VALIDATION,
     geoLocation: z.object({
         type: STRING_VALIDATION.default("Point"),
@@ -53,6 +54,7 @@ export const COMPANY_UPDATE_REQUEST_VALIDATION = z.object({
         error: "Tamanho máximo de 200 caracteres excedido"
     }).optional(),
     logoUrl: STRING_VALIDATION.optional(),
+    apiKey: STRING_VALIDATION.optional(),
     address: ADDRESS_UPDATE_VALIDATION.optional(),
     // Atualização parcial: somente os campos enviados são alterados; workingDays, se enviado, substitui a lista inteira
     configuration: z.object({
